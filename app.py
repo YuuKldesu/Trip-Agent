@@ -426,23 +426,54 @@ class App(tk.Tk):
             row=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
         old=dict(row)
-        win=tk.Toplevel(self); win.title('编辑行程'); win.transient(self); win.grab_set(); win.geometry('560x640')
-        body=ttk.Frame(win,padding=20); body.pack(fill='both',expand=True)
-        fields={}
-        for key,label,value in [('title','活动名称',old['title']),('day','日期（YYYY-MM-DD）',old['day']),('start','开始时间（HH:MM）',hm(old['start'])),('location','地点',old['location']),('duration','耗时（分钟）',str(old['duration']))]:
-            ttk.Label(body,text=label).pack(anchor='w'); var=tk.StringVar(value=value); fields[key]=var
-            ttk.Entry(body,textvariable=var,state='readonly' if key=='duration' else 'normal').pack(fill='x',pady=(2,8))
-        ttk.Label(body,text='结束时间（HH:MM，修改后自动计算耗时）').pack(anchor='w')
-        end_var=tk.StringVar(value=hm(old['start']+old['duration'])); ttk.Entry(body,textvariable=end_var).pack(fill='x',pady=(2,8))
+        win=tk.Toplevel(self); win.title('行程详情'); win.transient(self); win.grab_set(); win.geometry('900x690'); win.minsize(780,620); win.configure(bg='#f7f8fa')
+        header=tk.Frame(win,bg='white',padx=28,pady=15,highlightbackground='#e4e7ec',highlightthickness=1); header.pack(fill='x')
+        tk.Label(header,text=f'行程  /  TRIP-{event_id:04d}',bg='white',fg='#748094',font=('Microsoft YaHei',9)).pack(anchor='w')
+        heading=tk.Frame(header,bg='white'); heading.pack(fill='x',pady=(7,0))
+        title=tk.StringVar(value=old['title'])
+        tk.Entry(heading,textvariable=title,bg='white',fg='#172b4d',font=('Microsoft YaHei',18,'bold'),relief='flat',highlightthickness=0).pack(side='left',fill='x',expand=True)
+        tk.Label(heading,text='已完成' if old.get('completed') else '待进行',bg='#e9f2ff' if not old.get('completed') else '#e6f4ea',fg='#2458a6' if not old.get('completed') else '#28784a',font=('Microsoft YaHei',9,'bold'),padx=10,pady=5).pack(side='right')
+        footer=tk.Frame(win,bg='white',padx=28,pady=13,highlightbackground='#e4e7ec',highlightthickness=1); footer.pack(side='bottom',fill='x')
+        status=tk.Label(footer,text='',bg='white',fg='#6b778c',font=('Microsoft YaHei',9)); status.pack(side='left')
+        save=tk.Button(footer,text='检查并保存',bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=18,pady=7,cursor='hand2'); save.pack(side='right')
+        tk.Button(footer,text='取消',bg='white',fg='#44546f',relief='flat',padx=12,pady=7,cursor='hand2',command=win.destroy).pack(side='right',padx=6)
+        content=tk.Frame(win,bg='#f7f8fa',padx=28,pady=20); content.pack(fill='both',expand=True)
+        detail=tk.Frame(content,bg='white',padx=20,pady=17,highlightbackground='#e5e9f0',highlightthickness=1); detail.pack(side='left',fill='both',expand=True,padx=(0,14))
+        side=tk.Frame(content,bg='white',padx=16,pady=17,width=230,highlightbackground='#e5e9f0',highlightthickness=1); side.pack(side='right',fill='y'); side.pack_propagate(False)
+        tk.Label(detail,text='行程详情',bg='white',fg='#172b4d',font=('Microsoft YaHei',12,'bold')).pack(anchor='w',pady=(0,12))
+        fields={'title':title}
+        def caption(parent,text): tk.Label(parent,text=text,bg='white',fg='#626f86',font=('Microsoft YaHei',9,'bold')).pack(anchor='w',pady=(0,5))
+        def input_field(parent,key,value):
+            var=tk.StringVar(value=value); fields[key]=var
+            entry=tk.Entry(parent,textvariable=var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
+            entry.pack(fill='x',ipady=7,pady=(0,13)); return entry
+        caption(detail,'日期'); input_field(detail,'day',old['day'])
+        caption(detail,'地点'); input_field(detail,'location',old['location'])
+        time_row=tk.Frame(detail,bg='white'); time_row.pack(fill='x')
+        left=tk.Frame(time_row,bg='white'); left.pack(side='left',fill='x',expand=True,padx=(0,8))
+        right=tk.Frame(time_row,bg='white'); right.pack(side='left',fill='x',expand=True,padx=(8,0))
+        caption(left,'开始时间'); input_field(left,'start',hm(old['start']))
+        caption(right,'结束时间'); end_var=tk.StringVar(value=hm(old['start']+old['duration']))
+        tk.Entry(right,textvariable=end_var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10)).pack(fill='x',ipady=7,pady=(0,13))
+        fields['duration']=tk.StringVar(value=str(old['duration']))
+        duration_label=tk.Label(detail,text=f"预计耗时  ·  {old['duration']} 分钟",bg='white',fg='#5c6b82',font=('Microsoft YaHei',9),anchor='w'); duration_label.pack(fill='x',pady=(0,14))
         def sync_duration(*_):
             try:
                 st=parse_clock(fields['start'].get()); en=parse_clock(end_var.get())
-                if en>st: fields['duration'].set(str(en-st))
-            except ValueError: pass
+                if en>st:
+                    fields['duration'].set(str(en-st)); duration_label.config(text=f'预计耗时  ·  {en-st} 分钟',fg='#5c6b82')
+                elif en==st and old['duration']==0:
+                    fields['duration'].set('0'); duration_label.config(text='到达时间点',fg='#5c6b82')
+                else: duration_label.config(text='结束时间须晚于开始时间',fg='#ae5147')
+            except ValueError: duration_label.config(text='请输入 24 小时时间，如 09:30',fg='#ae5147')
         end_var.trace_add('write',sync_duration); fields['start'].trace_add('write',sync_duration)
-        ttk.Label(body,text='备注').pack(anchor='w'); notes=tk.Text(body,height=3,wrap='word'); notes.pack(fill='x',pady=(2,8)); notes.insert('1.0',old.get('notes',''))
-        ttk.Label(body,text='校验交通方式').pack(anchor='w'); mode=tk.StringVar(value='公交'); ttk.Combobox(body,textvariable=mode,values=['公交','驾车','步行','骑行'],state='readonly',width=12).pack(anchor='w',pady=(2,8))
-        status=ttk.Label(body,text=''); status.pack(anchor='w'); save=ttk.Button(body,text='检查并保存'); save.pack(anchor='e',pady=(8,0))
+        caption(detail,'备注')
+        notes=tk.Text(detail,height=5,wrap='word',bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10),padx=8,pady=7); notes.pack(fill='both',expand=True); notes.insert('1.0',old.get('notes',''))
+        tk.Label(side,text='规划属性',bg='white',fg='#172b4d',font=('Microsoft YaHei',11,'bold')).pack(anchor='w',pady=(0,14))
+        caption(side,'交通校验方式')
+        mode=tk.StringVar(value='公交'); ttk.Combobox(side,textvariable=mode,values=['公交','驾车','步行','骑行'],state='readonly',width=18).pack(fill='x',pady=(0,12))
+        tk.Label(side,text='保存时将按所选方式检查与相邻行程的通行时间。',bg='white',fg='#8993a4',wraplength=185,justify='left',anchor='w',font=('Microsoft YaHei',9)).pack(fill='x')
+        tk.Label(side,text='日期格式  YYYY-MM-DD\n时间格式  24 小时制',bg='white',fg='#8993a4',justify='left',anchor='w',font=('Microsoft YaHei',9)).pack(fill='x',pady=(20,0))
         def submit_edit():
             try:
                 new={'title':fields['title'].get().strip(),'day':fields['day'].get().strip(),'start':parse_clock(fields['start'].get()),'location':fields['location'].get().strip(),'duration':int(fields['duration'].get().strip()),'notes':notes.get('1.0','end').strip()}
