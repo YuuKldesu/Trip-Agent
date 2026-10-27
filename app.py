@@ -29,6 +29,19 @@ def settings():
     try: return json.loads(CONFIG.read_text(encoding='utf-8'))
     except (OSError, ValueError): return {}
 
+def bailian_url(region, host=''):
+    hosts={'北京':'dashscope.aliyuncs.com','新加坡':'dashscope-intl.aliyuncs.com'}
+    if region not in hosts: raise ValueError('百炼地域配置无效，请在设置中重新选择。')
+    host=host.strip().lower()
+    if host:
+        host=host.removeprefix('https://').rstrip('/')
+        if host.endswith('/compatible-mode/v1'): host=host[:-len('/compatible-mode/v1')]
+        suffix={'北京':'.cn-beijing.maas.aliyuncs.com','新加坡':'.ap-southeast-1.maas.aliyuncs.com'}[region]
+        if not re.fullmatch(r'[a-z0-9-]+'+re.escape(suffix),host):
+            raise ValueError('百炼 API Host 格式或地域不正确，请复制控制台中的业务空间专属域名。')
+    else: host=hosts[region]
+    return 'https://'+host+'/compatible-mode/v1/chat/completions'
+
 def request_json(req, stage, timeout=12, retries=0):
     for attempt in range(retries+1):
         try:
@@ -36,7 +49,13 @@ def request_json(req, stage, timeout=12, retries=0):
                 return json.load(response)
         except urllib.error.HTTPError as exc:
             hint = ('身份验证失败，请核对 API Key、服务商和地域。' if exc.code==401 else '账户余额不足，请检查余额。' if exc.code==402 else '请检查服务权限和配置。')
-            raise ValueError(f'{stage}：服务返回 HTTP {exc.code}。{hint}') from exc
+            code=''
+            try:
+                payload=json.loads(exc.read(65536)); error=payload.get('error',{})
+                raw=error.get('code','') if isinstance(error,dict) else ''
+                if isinstance(raw,str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,80}',raw): code=f'\n服务错误代码：{raw}'
+            except (ValueError,TypeError,AttributeError): pass
+            raise ValueError(f'{stage}：服务返回 HTTP {exc.code}。{hint}{code}') from exc
         except (urllib.error.URLError, ssl.SSLError, socket.timeout, ConnectionError, TimeoutError) as exc:
             reason=getattr(exc,'reason',exc)
             temporary=isinstance(reason,(ssl.SSLEOFError, socket.timeout, ConnectionError, TimeoutError)) or 'UNEXPECTED_EOF_WHILE_READING' in str(reason)
@@ -122,10 +141,8 @@ def parse(text, cfg):
         extra={'model':'deepseek-flash','thinking':{'type':'disabled'}}
     elif provider=='阿里云百炼':
         key=cfg.get('bailian_key','').strip(); stage='阿里云百炼解析'
-        hosts={'北京':'https://dashscope.aliyuncs.com','新加坡':'https://dashscope-intl.aliyuncs.com'}
         region=cfg.get('bailian_region','北京')
-        if region not in hosts: raise ValueError('百炼地域配置无效，请在设置中重新选择。')
-        url=hosts[region]+'/compatible-mode/v1/chat/completions'
+        url=bailian_url(region,cfg.get('bailian_host',''))
         extra={'model':'qwen-plus','enable_thinking':False}
     else: raise ValueError('大模型服务配置无效，请在设置中重新选择。')
     if not key: raise ValueError(f'请选择的 {provider} 未填写 API Key，请到设置填写，或选择本地规则。')
@@ -386,16 +403,18 @@ class App(tk.Tk):
             ttk.Entry(frame,textvariable=var,show='*',width=62).grid(row=3+i*2,column=0,sticky='ew',pady=(2,8))
         ttk.Label(frame,text='百炼地域（须与 Key 所属地域一致）').grid(row=8,column=0,sticky='w')
         region=tk.StringVar(value=cfg.get('bailian_region','北京')); ttk.Combobox(frame,textvariable=region,values=['北京','新加坡'],state='readonly',width=20).grid(row=9,column=0,sticky='w',pady=(2,8))
-        ttk.Label(frame,text='密钥明文存储于本机用户目录，请勿分享配置文件。').grid(row=10,column=0,sticky='w')
-        ttk.Label(frame,text='主题色').grid(row=11,column=0,sticky='w',pady=(14,4))
+        ttk.Label(frame,text='百炼 API Host（可选：业务空间专属域名）').grid(row=10,column=0,sticky='w')
+        host=tk.StringVar(value=cfg.get('bailian_host','')); ttk.Entry(frame,textvariable=host,width=62).grid(row=11,column=0,sticky='ew',pady=(2,8))
+        ttk.Label(frame,text='密钥明文存储于本机用户目录，请勿分享配置文件。').grid(row=12,column=0,sticky='w')
+        ttk.Label(frame,text='主题色').grid(row=13,column=0,sticky='w',pady=(14,4))
         selected=tk.StringVar(value=cfg.get('theme') if cfg.get('theme') in THEMES else '暖珊瑚')
-        palette=tk.Frame(frame); palette.grid(row=12,column=0,sticky='w')
+        palette=tk.Frame(frame); palette.grid(row=14,column=0,sticky='w')
         for name,colors in THEMES.items():
             item=tk.Frame(palette); item.pack(side='left',padx=(0,8))
             tk.Label(item,text='●',fg=colors['accent'],font=('Arial',16)).pack(side='left')
             ttk.Radiobutton(item,text=name,variable=selected,value=name).pack(side='left')
         def save():
-            cfg.update({k:v.get().strip() for k,v in values.items()}); cfg.update(theme=selected.get(),llm_provider=provider.get(),bailian_region=region.get())
+            cfg.update({k:v.get().strip() for k,v in values.items()}); cfg.update(theme=selected.get(),llm_provider=provider.get(),bailian_region=region.get(),bailian_host=host.get().strip())
             CONFIG.write_text(json.dumps(cfg,ensure_ascii=False),encoding='utf-8')
             try: CONFIG.chmod(0o600)
             except OSError: pass
@@ -403,7 +422,7 @@ class App(tk.Tk):
             self.composer_label.config(fg=self.theme['accent']); self.input.config(insertbackground=self.theme['accent'])
             self.add.config(bg=self.theme['accent'],activebackground=self.theme['hover']); self.refresh()
             win.destroy()
-        ttk.Button(frame,text='保存',command=save).grid(row=13,column=0,sticky='e',pady=(12,0))
+        ttk.Button(frame,text='保存',command=save).grid(row=15,column=0,sticky='e',pady=(12,0))
     def submit(self):
         text=self.input.get('1.0','end').strip(); mode=self.mode.get(); cfg=settings()
         if not text: return

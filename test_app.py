@@ -75,6 +75,17 @@ class Tests(unittest.TestCase):
     def test_bailian_requires_own_key(self):
         with self.assertRaisesRegex(ValueError,'未填写 API Key'):
             app.parse('明天在南京博物院参观，约2小时',{'llm_provider':'阿里云百炼','deepseek_key':'some-other-key'})
+    def test_workspace_endpoint_validation(self):
+        endpoint=app.bailian_url('北京','https://llm-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1')
+        self.assertEqual(endpoint,'https://llm-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions')
+        for host in ['evil.example','evil.cn-beijing.maas.aliyuncs.com.evil.example','llm-demo.ap-southeast-1.maas.aliyuncs.com']:
+            with self.subTest(host=host), self.assertRaises(ValueError): app.bailian_url('北京',host)
+    def test_bailian_error_code_is_safe(self):
+        payload=io.BytesIO(b'{"error":{"code":"invalid_api_key","message":"do not echo"}}')
+        error=urllib.error.HTTPError('https://example.com',401,'Unauthorized',{},payload)
+        with patch('app.urllib.request.urlopen',side_effect=error):
+            with self.assertRaises(ValueError) as caught: app.request_json(urllib.request.Request('https://example.com'),'百炼')
+        self.assertIn('invalid_api_key',str(caught.exception)); self.assertNotIn('do not echo',str(caught.exception))
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):
