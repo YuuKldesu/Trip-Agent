@@ -99,6 +99,19 @@ class Tests(unittest.TestCase):
         travel_times={('A','C'):(25,'骑行'),('C','B'):(40,'公交')}
         result=app.plan(dict(start=630,duration=120,coord='C'),existing,lambda a,b:travel_times[(a,b)])
         self.assertEqual(result[1:5],(25,40,'骑行','公交'))
+    def test_multiple_event_extraction(self):
+        import json
+        output={'events':[{'day':'2026-10-29','title':'游览夫子庙','location':'夫子庙','duration':120,'start':None},{'day':'2026-10-29','title':'逛老门东','location':'老门东','duration':30,'start':None,'mode_in':'步行'},{'day':'2026-10-29','title':'返回南京大学','location':'南京大学','duration':0,'start':None,'mode_in':'公交','is_return':True,'latest_end':1080}]}
+        response={'choices':[{'message':{'content':json.dumps(output,ensure_ascii=False)}}]}
+        with patch('app.request_json',return_value=response): result=app.parse('后天早上去夫子庙玩2小时，然后步行去老门东30分钟，最后坐地铁回南京大学，下午六点前回来',{'llm_provider':'阿里云百炼','bailian_key':'test'},multiple=True)
+        self.assertEqual(len(result['events']),3); self.assertEqual(result['events'][-1]['latest_end'],1080); self.assertEqual(result['events'][1]['mode_in'],'步行')
+    def test_return_deadline_and_sequence(self):
+        prior=[{'start':900,'duration':30,'coord':'A'}]
+        result=app.plan({'duration':0,'start':None,'coord':'B','earliest':930,'latest_end':960},prior,lambda a,b:(25,'公交'))
+        self.assertEqual(result[0],955)
+        with self.assertRaises(ValueError): app.plan({'duration':0,'start':None,'coord':'B','earliest':930,'latest_end':950},prior,lambda a,b:(25,'公交'))
+    def test_local_multiple_is_not_silently_truncated(self):
+        with self.assertRaisesRegex(ValueError,'多项活动'): app.parse('明天去夫子庙玩2小时然后去老门东玩30分钟',{'llm_provider':'本地规则'},multiple=True)
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

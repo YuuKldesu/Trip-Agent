@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 import sqlite3, os, json, re, math, urllib.request, urllib.parse, urllib.error, datetime as dt, threading, calendar, ssl, socket, time
 from pathlib import Path
 
@@ -146,9 +146,13 @@ def parse_local(text, today=None):
     title=activity+' · '+place
     return {'day':day.isoformat(),'location':place,'title':title,'duration':minutes,'start':start}
 
-def parse(text, cfg):
+def parse(text, cfg, multiple=False):
     provider=cfg.get('llm_provider') or ('DeepSeek' if cfg.get('deepseek_key') else '本地规则')
-    if provider=='本地规则': return parse_local(text)
+    if provider=='本地规则':
+        if multiple and re.search(r'然后|接着|最后|再去|之后|随后|再到|回到|返回',text):
+            raise ValueError('多项活动或返程需要选择阿里云百炼或 DeepSeek 解析；本地规则暂不支持，请在设置中切换。')
+        result=parse_local(text)
+        return {'events':[result]} if multiple else result
     if provider=='DeepSeek':
         key=cfg.get('deepseek_key','').strip(); stage='DeepSeek 解析'; url='https://api.deepseek.com/chat/completions'
         extra={'model':'deepseek-flash','thinking':{'type':'disabled'}}
@@ -161,6 +165,17 @@ def parse(text, cfg):
     if not key: raise ValueError(f'请选择的 {provider} 未填写 API Key，请到设置填写，或选择本地规则。')
     today=dt.date.today().isoformat()
     body={**extra,'messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
+    if multiple:
+        body['messages'][0]['content']=(
+            '只返回JSON对象，包含 events 数组，按用户要求的顺序逐项完整提取，每项字段：'
+            'day YYYY-MM-DD、title、location、duration整数分钟、start整数(精确开始时间距午夜的分钟，未指定则null)、'
+            'earliest整数(最早开始时刻，早上为480，下午为720，未限制为null)、'
+            'latest_end整数(必须结束或到达的最晚分钟，未限制为null)、'
+            'mode_in(到此活动的交通方式，仅公交、步行、骑行、驾车之一，未指定为null)、'
+            'is_return布尔值（回到某地为true，该项duration为0）；日期继承用户已说明的日期。'
+            '例如后天早上去夫子庙玩2小时，然后步行去老门东30分钟，最后坐地铁回南京大学下午六点前回来：'
+            '三项分别为夫子庙、老门东、返回南京大学，后两项mode_in分别为步行和公交，返回项latest_end为1080。'
+            '不要遗漏返程或截止时间；未指定上午或下午的截止时间不要猜测，填写null；需要用户补充的截止时间在该项增加 deadline_missing:true。时间未说明使用null。今天是'+today)
     req=urllib.request.Request(url,data=json.dumps(body,ensure_ascii=False).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     result=request_json(req,stage,timeout=30)
     return json.loads(result['choices'][0]['message']['content'])
@@ -179,13 +194,13 @@ def plan(event, existing, travel_fn):
     for i in range(len(existing)+1):
         prev=existing[i-1] if i else None; nxt=existing[i] if i<len(existing) else None
         # Skip gaps that cannot fit even before adding travel time.
-        base_start=max(480,prev['start']+prev['duration'] if prev else 480)
-        base_end=min(1320-duration,nxt['start']-duration if nxt else 1320-duration)
+        base_start=max(480,event.get('earliest') or 0,prev['start']+prev['duration'] if prev else 480)
+        base_end=min(1320-duration,(event.get('latest_end') if event.get('latest_end') is not None else 1320)-duration,nxt['start']-duration if nxt else 1320-duration)
         if base_start>base_end or (specified is not None and not base_start<=specified<=base_end): continue
         before,bs=travel_fn(prev['coord'],event['coord']) if prev else (0,'无前序行程')
         after,asrc=travel_fn(event['coord'],nxt['coord']) if nxt else (0,'无后续行程')
-        earliest=max(480, prev['start']+prev['duration']+before if prev else 480)
-        latest=min(1320-duration,nxt['start']-after-duration if nxt else 1320-duration)
+        earliest=max(480,event.get('earliest') or 0,prev['start']+prev['duration']+before if prev else 480)
+        latest=min(1320-duration,(event.get('latest_end') if event.get('latest_end') is not None else 1320)-duration,nxt['start']-after-duration if nxt else 1320-duration)
         candidate=specified if specified is not None else earliest
         if earliest<=candidate<=latest:
             best=(candidate,before,after,bs,asrc,prev,nxt); break
@@ -372,7 +387,8 @@ class App(tk.Tk):
         def submit_edit():
             try:
                 new={'title':fields['title'].get().strip(),'day':fields['day'].get().strip(),'start':parse_clock(fields['start'].get()),'location':fields['location'].get().strip(),'duration':int(fields['duration'].get().strip()),'notes':notes.get('1.0','end').strip()}
-                validate(new)
+                if old['duration']==0 and new['duration']==0: validate(dict(new,duration=1))
+                else: validate(new)
             except (ValueError,TypeError) as ex: messagebox.showerror('请检查输入',str(ex),parent=win); return
             mode_value=mode.get(); cfg=settings(); save.config(state='disabled'); status.config(text='正在检查地点和行程冲突…')
             def worker():
@@ -468,45 +484,101 @@ class App(tk.Tk):
         else:
             i=self.ask_choice('选择地点',f'“{place}”可能对应多个地点，请选择确切位置；找不到时请取消并输入更具体名称。', [p['name']+'　'+p['note'] for p in options]); p=options[i]
         return p['name'],p['coord'],p['note']
+    def ask_text(self,title,prompt):
+        done=threading.Event(); result={'value':None}
+        def show():
+            result['value']=simpledialog.askstring(title,prompt,parent=self); done.set()
+        self.after(0,show); done.wait()
+        if result['value'] is None: raise ValueError('已取消本次规划。')
+        return result['value'].strip()
     def submit(self):
         text=self.input.get('1.0','end').strip(); cfg=settings()
         if not text: return
         self.add.config(state='disabled'); self.status.config(text='正在解析与规划…')
         def work():
             try:
-                e=parse(text,cfg); validate(e); e['notes']=text
-                e['location'],e['coord'],note=self.choose_place(e['location'],cfg.get('amap_key'))
-                existing=rows(e['day']); cache={}; choices={}
-                names={x['coord']:x['location'] for x in existing}; names[e['coord']]=e['location']
-                def route(a,b):
-                    if a==b: return (0,'同一地点')
-                    if (a,b) not in cache:
-                        options=['公交 / 地铁（含步行接驳）','步行','骑行','驾车']
-                        selected=self.ask_choice('选择出行方式',f"从 {names.get(a,a)} 到 {names.get(b,b)}，选择这段路的出行方式：",options)
-                        mode=['公交','步行','骑行','驾车'][selected]; choices[(a,b)]=mode
-                        minutes,source=travel(a,b,cfg.get('amap_key'),mode)
-                        cache[(a,b)]=(minutes,mode+' · '+source)
-                    return cache[(a,b)]
-                result=plan(e,existing,route)
-                self.after(0,lambda:self.confirm(e,result,note,existing))
+                parsed=parse(text,cfg,multiple=True); events=parsed.get('events')
+                if not isinstance(events,list) or not 1<=len(events)<=15: raise ValueError('未能识别活动列表，或活动超过15项，请调整输入。')
+                for index,e in enumerate(events):
+                    if not isinstance(e,dict): raise ValueError('活动信息格式有误，请重新输入。')
+                    name=e.get('title') or f'第{index+1}项活动'
+                    if not e.get('day'): e['day']=self.ask_text('补充日期',f'{name} 的日期是什么？请输入 YYYY-MM-DD。')
+                    if not e.get('location'): e['location']=self.ask_text('补充地点',f'{name} 在哪里？')
+                    if not e.get('title'): e['title']='返回 '+e['location'] if e.get('is_return') else '活动 · '+e['location']
+                    if e.get('deadline_missing') and e.get('latest_end') is None:
+                        e['latest_end']=parse_clock(self.ask_text('补充截止时间',f'{name} 必须在几点前到达或结束？请输入 24 小时制，例如 18:00。'))
+                    if e.get('is_return'): e['duration']=0
+                    elif e.get('duration') is None:
+                        raw=self.ask_text('补充耗时',f'{name} 大约需要多少分钟？请输入整数。')
+                        try: e['duration']=int(raw)
+                        except ValueError: raise ValueError('耗时需要填写整数分钟。')
+                    if e.get('is_return'):
+                        temp=dict(e,duration=1); validate(temp)
+                    else: validate(e)
+                    for field in ('earliest','latest_end'):
+                        value=e.get(field)
+                        if value is not None and (isinstance(value,bool) or not isinstance(value,int) or not 0<=value<=1440): raise ValueError(f'{name} 的时间限制无效，请重新输入。')
+                    if e.get('mode_in') not in (None,'公交','步行','骑行','驾车'): raise ValueError(f'{name} 的交通方式无法识别，请重新输入。')
+                    e['notes']='返程目的地' if e.get('is_return') else text
+                    e['location'],e['coord'],e['place_source']=self.choose_place(e['location'],cfg.get('amap_key'))
+                snapshots={day:rows(day) for day in {e['day'] for e in events}}
+                working={day:list(items) for day,items in snapshots.items()}; planned=[]; previous_by_day={}; cache={}
+                for e in events:
+                    previous=previous_by_day.get(e['day'])
+                    if previous:
+                        e['earliest']=max(e.get('earliest') or 0,previous['start']+previous['duration'])
+                    names={x['coord']:x['location'] for x in working[e['day']]}; names[e['coord']]=e['location']
+                    def route(a,b):
+                        if a==b: return (0,'同一地点')
+                        explicit=e.get('mode_in') if previous and previous['coord']==a and b==e['coord'] else None
+                        key=(a,b,explicit)
+                        if key not in cache:
+                            if explicit: mode=explicit
+                            else:
+                                options=['公交 / 地铁（含步行接驳）','步行','骑行','驾车']
+                                selected=self.ask_choice('选择出行方式',f"从 {names.get(a,a)} 到 {names.get(b,b)}，选择这段路的出行方式：",options)
+                                mode=['公交','步行','骑行','驾车'][selected]
+                            minutes,source=travel(a,b,cfg.get('amap_key'),mode); cache[key]=(minutes,mode+' · '+source)
+                        return cache[key]
+                    result=plan(e,working[e['day']],route); start,before,after,bs,src,prev,nxt=result
+                    e['start']=start; e['_route']=result
+                    if prev: e['notes']+=f'\n前往方式：{bs}，约 {before} 分钟'
+                    if e.get('latest_end') is not None: e['notes']+=f"\n截止时间：{hm(e['latest_end'])}"
+                    planned.append(e)
+                    working[e['day']].append(e); working[e['day']].sort(key=lambda x:x['start']); previous_by_day[e['day']]=e
+                self.after(0,lambda:self.confirm_batch(planned,snapshots))
             except Exception as ex:
                 msg=str(ex); self.after(0,lambda:messagebox.showerror('无法规划',msg))
             finally: self.after(0,lambda:(self.add.config(state='normal'),self.status.config(text='')))
         threading.Thread(target=work,daemon=True).start()
-    def confirm(self,e,result,note,snapshot):
-        start,before,after,bs,src,prev,nxt=result
-        info=f"日期：{e['day']}\n活动：{e['title']}\n备注：{e['notes']}\n地点：{e['location']}\n开始：{hm(start)}　结束：{hm(start+e['duration'])}\n耗时：{e['duration']} 分钟\n地点来源：{note}\n"
-        if prev: info+=f"\n上一行程 → 本行程：{before} 分钟（{bs}）"
-        if nxt: info+=f"\n本行程 → 下一行程：{after} 分钟（{src}）"
-        info+='\n\n确认保存？'
-        if messagebox.askyesno('核对规划',info):
-            try:
-                with db() as c:
-                    c.row_factory=sqlite3.Row
-                    current=[dict(r) for r in c.execute('SELECT * FROM events WHERE day=? ORDER BY start,id',(e['day'],))]
-                    if current!=snapshot: raise ValueError('当天行程已有变化，请重新规划。')
-                    c.execute('INSERT INTO events(day,title,location,coord,start,duration,fixed,notes) VALUES(?,?,?,?,?,?,?,?)',(e['day'],e['title'],e['location'],e['coord'],start,e['duration'],int(e.get('start') is not None),e['notes']))
-                self.day.set(e['day']); self.refresh()
-            except Exception as ex: messagebox.showerror('保存失败',str(ex))
+    def confirm_batch(self,planned,snapshots):
+        lines=[]
+        for e in planned:
+            start,before,after,bs,src,prev,nxt=e['_route']
+            duration='抵达' if e['duration']==0 else hm(start)+' – '+hm(start+e['duration'])
+            lines.append(f"{e['day']}  {hm(start) if e['duration']==0 else duration}  {e['title']}\n  地点：{e['location']}")
+            if prev: lines.append(f"  从上一项前往：{before} 分钟（{bs}）")
+            if nxt: lines.append(f"  前往下一项：{after} 分钟（{src}）")
+            if e.get('latest_end') is not None: lines.append(f"  截止时间：{hm(e['latest_end'])}")
+        dialog=tk.Toplevel(self); dialog.title('核对全部行程'); dialog.transient(self); dialog.grab_set(); dialog.geometry('680x520')
+        area=ttk.Frame(dialog,padding=16); area.pack(fill='both',expand=True)
+        textview=tk.Text(area,wrap='word'); scroll=ttk.Scrollbar(area,orient='vertical',command=textview.yview); textview.configure(yscrollcommand=scroll.set); scroll.pack(side='right',fill='y'); textview.pack(fill='both',expand=True)
+        textview.insert('1.0','\n\n'.join(lines)); textview.config(state='disabled')
+        buttons=ttk.Frame(dialog,padding=(16,0,16,16)); buttons.pack(fill='x')
+        approved={'yes':False}
+        def accept(): approved['yes']=True; dialog.destroy()
+        ttk.Button(buttons,text='确认并保存',command=accept).pack(side='right'); ttk.Button(buttons,text='取消',command=dialog.destroy).pack(side='right',padx=8)
+        self.wait_window(dialog)
+        if not approved['yes']: return
+        try:
+            with db() as c:
+                c.row_factory=sqlite3.Row
+                for day,snapshot in snapshots.items():
+                    current=[dict(r) for r in c.execute('SELECT * FROM events WHERE day=? ORDER BY start,id',(day,))]
+                    if current!=snapshot: raise ValueError('行程已有变化，请重新规划。')
+                for e in planned:
+                    c.execute('INSERT INTO events(day,title,location,coord,start,duration,fixed,notes) VALUES(?,?,?,?,?,?,?,?)',(e['day'],e['title'],e['location'],e['coord'],e['start'],e['duration'],1,e['notes']))
+            self.day.set(planned[0]['day']); self.refresh()
+        except Exception as ex: messagebox.showerror('保存失败',str(ex))
 
 if __name__=='__main__': App().mainloop()
