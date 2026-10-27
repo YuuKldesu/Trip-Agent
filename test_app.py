@@ -112,6 +112,15 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError): app.plan({'duration':0,'start':None,'coord':'B','earliest':930,'latest_end':950},prior,lambda a,b:(25,'公交'))
     def test_local_multiple_is_not_silently_truncated(self):
         with self.assertRaisesRegex(ValueError,'多项活动'): app.parse('明天去夫子庙玩2小时然后去老门东玩30分钟',{'llm_provider':'本地规则'},multiple=True)
+    def test_multiple_events_extract_distinct_notes(self):
+        import json
+        output={'events':[{'day':'2026-10-29','title':'游览夫子庙','location':'夫子庙','duration':120,'start':None,'notes':'与朋友一起游览'}, {'day':'2026-10-29','title':'逛老门东','location':'老门东','duration':30,'start':None,'notes':'拍照'}]}
+        response={'choices':[{'message':{'content':json.dumps(output,ensure_ascii=False)}}]}
+        with patch('app.request_json',return_value=response) as mock:
+            result=app.parse('明天和朋友去夫子庙，再去老门东拍照',{'llm_provider':'阿里云百炼','bailian_key':'test'},multiple=True)
+        self.assertEqual([e['notes'] for e in result['events']],['与朋友一起游览','拍照'])
+        body=json.loads(mock.call_args.args[0].data)
+        self.assertIn('不虚构',body['messages'][0]['content'])
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

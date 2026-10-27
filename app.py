@@ -171,6 +171,7 @@ def parse(text, cfg, multiple=False):
             'day YYYY-MM-DD、title、location、duration整数分钟、start整数(精确开始时间距午夜的分钟，未指定则null)、'
             'earliest整数(最早开始时刻，早上为480，下午为720，未限制为null)、'
             'latest_end整数(必须结束或到达的最晚分钟，未限制为null)、'
+            'notes(仅针对该项活动的简短中文摘要，提取用户明确提到的具体要求、同行人或限制，不重复完整输入、不虚构；无额外细节时为空字符串)、'
             'mode_in(到此活动的交通方式，仅公交、步行、骑行、驾车之一，未指定为null)、'
             'is_return布尔值（回到某地为true，该项duration为0）；日期继承用户已说明的日期。'
             '例如后天早上去夫子庙玩2小时，然后步行去老门东30分钟，最后坐地铁回南京大学下午六点前回来：'
@@ -519,7 +520,10 @@ class App(tk.Tk):
                         value=e.get(field)
                         if value is not None and (isinstance(value,bool) or not isinstance(value,int) or not 0<=value<=1440): raise ValueError(f'{name} 的时间限制无效，请重新输入。')
                     if e.get('mode_in') not in (None,'公交','步行','骑行','驾车'): raise ValueError(f'{name} 的交通方式无法识别，请重新输入。')
-                    e['notes']='返程目的地' if e.get('is_return') else text
+                    summary=e.get('notes')
+                    if summary is None: summary=''
+                    if not isinstance(summary,str): raise ValueError(f'{name} 的备注格式无效，请重新规划。')
+                    e['notes']=summary.strip()
                     e['location'],e['coord'],e['place_source']=self.choose_place(e['location'],cfg.get('amap_key'))
                 snapshots={day:rows(day) for day in {e['day'] for e in events}}
                 working={day:list(items) for day,items in snapshots.items()}; planned=[]; previous_by_day={}; cache={}
@@ -542,8 +546,8 @@ class App(tk.Tk):
                         return cache[key]
                     result=plan(e,working[e['day']],route); start,before,after,bs,src,prev,nxt=result
                     e['start']=start; e['_route']=result
-                    if prev: e['notes']+=f'\n前往方式：{bs}，约 {before} 分钟'
-                    if e.get('latest_end') is not None: e['notes']+=f"\n截止时间：{hm(e['latest_end'])}"
+                    if prev: e['notes']+=('\n' if e['notes'] else '')+f'前往方式：{bs}，约 {before} 分钟'
+                    if e.get('latest_end') is not None: e['notes']+=('\n' if e['notes'] else '')+f"截止时间：{hm(e['latest_end'])}"
                     planned.append(e)
                     working[e['day']].append(e); working[e['day']].sort(key=lambda x:x['start']); previous_by_day[e['day']]=e
                 self.after(0,lambda:self.confirm_batch(planned,snapshots))
@@ -557,6 +561,7 @@ class App(tk.Tk):
             start,before,after,bs,src,prev,nxt=e['_route']
             duration='抵达' if e['duration']==0 else hm(start)+' – '+hm(start+e['duration'])
             lines.append(f"{e['day']}  {hm(start) if e['duration']==0 else duration}  {e['title']}\n  地点：{e['location']}")
+            if e.get('notes'): lines.append(f"  备注：{e['notes']}")
             if prev: lines.append(f"  从上一项前往：{before} 分钟（{bs}）")
             if nxt: lines.append(f"  前往下一项：{after} 分钟（{src}）")
             if e.get('latest_end') is not None: lines.append(f"  截止时间：{hm(e['latest_end'])}")
