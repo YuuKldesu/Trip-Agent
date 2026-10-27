@@ -45,6 +45,18 @@ class Tests(unittest.TestCase):
             with self.assertRaises(ValueError) as caught: app.fetch('https://restapi.amap.com/test',{'key':'secret'},'高德路线查询')
         self.assertIn('高德路线查询',str(caught.exception))
         self.assertNotIn('secret',str(caught.exception))
+    def test_edit_clock_validation(self):
+        self.assertEqual(app.parse_clock('09:30'),570)
+        for value in ['24:00','09:60','9点半','']:
+            with self.subTest(value=value), self.assertRaises(ValueError): app.parse_clock(value)
+    def test_editing_same_event_excludes_itself(self):
+        current=[{'id':1,'start':540,'duration':60,'coord':'A'}, {'id':2,'start':720,'duration':60,'coord':'B'}]
+        changed={'day':'2026-10-27','title':'参观','location':'A','start':540,'duration':60,'coord':'A'}
+        app.validate(changed)
+        start,*_=app.plan(changed,[e for e in current if e['id']!=1],lambda a,b:(30,'test'))
+        self.assertEqual(start,540)
+        changed['start']=680
+        with self.assertRaises(ValueError): app.plan(changed,[e for e in current if e['id']!=1],lambda a,b:(30,'test'))
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

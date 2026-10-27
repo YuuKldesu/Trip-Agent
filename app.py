@@ -136,6 +136,13 @@ def plan(event, existing, travel_fn):
     return best
 
 def hm(m): return f'{m//60:02d}:{m%60:02d}'
+def parse_clock(value):
+    match=re.fullmatch(r'(\d{1,2}):(\d{2})',value.strip())
+    if not match: raise ValueError('开始时间请使用 HH:MM 格式，例如 09:30。')
+    hour,minute=map(int,match.groups())
+    if hour>23 or minute>59: raise ValueError('开始时间无效。')
+    return hour*60+minute
+
 def short_gap(previous, current):
     if previous['day'] != current['day']: return None
     gap=current['start']-(previous['start']+previous['duration'])
@@ -235,7 +242,10 @@ class App(tk.Tk):
                     add_label('地点：'+e['location'],'#77716a',('Microsoft YaHei',9))
                     add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
                     if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
-                    tk.Button(card,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(anchor='e')
+                    actions=tk.Frame(card,bg='white'); actions.pack(anchor='e')
+                    tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg='#d06d52',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
+                    tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
+                    self.bind_card(card,e['id'])
         self.canvas.yview_moveto(0)
     def refresh_list(self):
         date=dt.date.fromisoformat(self.day.get()); first=date.replace(day=1); last=date.replace(day=calendar.monthrange(date.year,date.month)[1])
@@ -270,13 +280,74 @@ class App(tk.Tk):
             tk.Label(timebox,text=str(e['duration'])+' 分钟',bg='#ebeef0',fg='#8a8d90',font=('Microsoft YaHei',9)).pack(pady=3)
             tk.Label(timebox,text=hm(e['start']+e['duration']),bg='#ebeef0',fg='#292725',font=('Arial',12,'bold')).pack()
             card=tk.Frame(row,bg='white',padx=15,pady=10,highlightbackground='#e8e4df',highlightthickness=1); card.pack(side='left',fill='both',expand=True)
-            tk.Button(card,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2').pack(side='right')
+            actions=tk.Frame(card,bg='white'); actions.pack(side='right')
+            tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg='#d06d52',relief='flat',cursor='hand2').pack()
+            tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2').pack()
             for text,fg,font in [(e['title'],'#302c29',('Microsoft YaHei',12,'bold')),('⌖  '+e['location'],'#77716a',('Microsoft YaHei',10)),('备注：'+e['notes'] if e.get('notes') else '', '#9a928b',('Microsoft YaHei',9))]:
                 if text:
                     label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=max(100,self.canvas.winfo_width()-175))
                     label.pack(fill='x',anchor='w',pady=(0,4)); self.wrapping_labels.append(label)
+            self.bind_card(card,e['id'])
             previous=e
         self.canvas.yview_moveto(0)
+    def bind_card(self,widget,event_id):
+        # Buttons retain their own actions; clicking the card or its text opens the editor.
+        if isinstance(widget,(tk.Frame,tk.Label)):
+            widget.configure(cursor='hand2')
+            widget.bind('<Button-1>',lambda event:self.edit_event(event_id))
+            for child in widget.winfo_children(): self.bind_card(child,event_id)
+    def edit_event(self,event_id):
+        with db() as c:
+            c.row_factory=sqlite3.Row
+            row=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
+        if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
+        old=dict(row)
+        win=tk.Toplevel(self); win.title('编辑行程'); win.transient(self); win.grab_set(); win.geometry('560x550')
+        body=ttk.Frame(win,padding=20); body.pack(fill='both',expand=True)
+        fields={}
+        for key,label,value in [('title','活动名称',old['title']),('day','日期（YYYY-MM-DD）',old['day']),('start','开始时间（HH:MM）',hm(old['start'])),('location','地点',old['location']),('duration','耗时（分钟）',str(old['duration']))]:
+            ttk.Label(body,text=label).pack(anchor='w'); var=tk.StringVar(value=value); fields[key]=var
+            ttk.Entry(body,textvariable=var).pack(fill='x',pady=(2,8))
+        ttk.Label(body,text='备注').pack(anchor='w'); notes=tk.Text(body,height=3,wrap='word'); notes.pack(fill='x',pady=(2,8)); notes.insert('1.0',old.get('notes',''))
+        ttk.Label(body,text='校验交通方式').pack(anchor='w'); mode=tk.StringVar(value=self.mode.get()); ttk.Combobox(body,textvariable=mode,values=['公交','驾车','步行'],state='readonly',width=12).pack(anchor='w',pady=(2,8))
+        status=ttk.Label(body,text=''); status.pack(anchor='w'); save=ttk.Button(body,text='检查并保存'); save.pack(anchor='e',pady=(8,0))
+        def submit_edit():
+            try:
+                new={'title':fields['title'].get().strip(),'day':fields['day'].get().strip(),'start':parse_clock(fields['start'].get()),'location':fields['location'].get().strip(),'duration':int(fields['duration'].get().strip()),'notes':notes.get('1.0','end').strip()}
+                validate(new)
+            except (ValueError,TypeError) as ex: messagebox.showerror('请检查输入',str(ex),parent=win); return
+            mode_value=mode.get(); cfg=settings(); save.config(state='disabled'); status.config(text='正在检查地点和行程冲突…')
+            def worker():
+                try:
+                    if new['location']==old['location']: new['coord']=old['coord']
+                    else: new['location'],new['coord'],_=geocode(new['location'],cfg.get('amap_key'))
+                    current=[item for item in rows(new['day']) if item['id']!=event_id]
+                    result=plan(new,current,lambda a,b:travel(a,b,cfg.get('amap_key'),mode_value))
+                    def finish():
+                        if not win.winfo_exists(): return
+                        start,before,after,bs,src,prev,nxt=result
+                        msg=f"活动：{new['title']}\n日期：{new['day']}  {hm(start)} – {hm(start+new['duration'])}\n地点：{new['location']}"
+                        if prev: msg+=f"\n上一项到此处：{before} 分钟（{bs}）"
+                        if nxt: msg+=f"\n此处到下一项：{after} 分钟（{src}）"
+                        if not messagebox.askyesno('确认修改',msg+'\n\n保存修改？',parent=win): save.config(state='normal'); status.config(text=''); return
+                        try:
+                            with db() as c:
+                                c.row_factory=sqlite3.Row
+                                latest=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
+                                current=[dict(x) for x in c.execute('SELECT * FROM events WHERE day=? AND id<>? ORDER BY start,id',(new['day'],event_id))]
+                                if latest is None or dict(latest)!=old or current!=current_snapshot: raise ValueError('相关行程已发生变化，请重新打开编辑。')
+                                c.execute('UPDATE events SET day=?,title=?,location=?,coord=?,start=?,duration=?,fixed=?,notes=? WHERE id=?',(new['day'],new['title'],new['location'],new['coord'],new['start'],new['duration'],1,new['notes'],event_id))
+                            self.day.set(new['day']); win.destroy(); self.refresh()
+                        except Exception as ex: messagebox.showerror('保存失败',str(ex),parent=win); save.config(state='normal'); status.config(text='')
+                    current_snapshot=current
+                    self.after(0,finish)
+                except Exception as ex:
+                    msg=str(ex)
+                    def fail():
+                        if win.winfo_exists(): messagebox.showerror('无法保存',msg,parent=win); save.config(state='normal'); status.config(text='')
+                    self.after(0,fail)
+            threading.Thread(target=worker,daemon=True).start()
+        save.config(command=submit_edit)
     def delete(self,event_id):
         if messagebox.askyesno('删除行程','确定删除这项行程吗？',parent=self):
             with db() as c: c.execute('DELETE FROM events WHERE id=?',(event_id,))
