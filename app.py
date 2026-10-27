@@ -426,7 +426,7 @@ class App(tk.Tk):
             row=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
         old=dict(row)
-        win=tk.Toplevel(self); win.title('行程详情'); win.transient(self); win.grab_set(); win.geometry('900x690'); win.minsize(780,620); win.configure(bg='#f7f8fa')
+        win=tk.Toplevel(self); win.title('行程详情'); win.transient(self); win.geometry('900x690'); win.minsize(780,620); win.configure(bg='#f7f8fa')
         # Hide the native title bar and retain an in-window close button and drag handle.
         win.overrideredirect(True)
         win.update_idletasks()
@@ -472,8 +472,7 @@ class App(tk.Tk):
             label=tk.Label(nav,bg='white',fg='#172b4d',font=('Microsoft YaHei',10,'bold')); label.pack(side='left',expand=True)
             days=tk.Frame(panel,bg='white'); days.pack(fill='both',expand=True,pady=(8,0))
             def close():
-                if pop.winfo_exists(): pop.grab_release(); pop.destroy()
-                if win.winfo_exists(): win.grab_set()
+                if pop.winfo_exists(): pop.destroy()
             def select(day): date_value.set(day.isoformat()); close()
             def render():
                 for child in days.winfo_children(): child.destroy()
@@ -496,7 +495,13 @@ class App(tk.Tk):
             x=min(date_entry.winfo_rootx(),max(0,pop.winfo_screenwidth()-pop.winfo_reqwidth()))
             below=date_entry.winfo_rooty()+date_entry.winfo_height()+4
             y=below if below+pop.winfo_reqheight()<=pop.winfo_screenheight() else max(0,date_entry.winfo_rooty()-pop.winfo_reqheight()-4)
-            pop.geometry(f'+{x}+{y}'); pop.deiconify(); pop.grab_set(); pop.bind('<Escape>',lambda e:close()); pop.focus_set()
+            pop.geometry(f'+{x}+{y}'); pop.deiconify(); pop.bind('<Escape>',lambda e:close())
+            def close_if_focus_leaves():
+                if not pop.winfo_exists(): return
+                focus=pop.focus_get()
+                if focus is None or not str(focus).startswith(str(pop)): close()
+            pop.bind('<FocusOut>',lambda e:pop.after_idle(close_if_focus_leaves))
+            pop.focus_force()
         date_entry.bind('<Button-1>',open_calendar)
         tk.Button(date_row,text='▦',command=open_calendar,bg='#f7f8fa',fg='#626f86',relief='flat',font=('Arial',13),padx=10,pady=4,cursor='hand2').pack(side='left',padx=(4,0))
         caption(detail,'地点'); input_field(detail,'location',old['location'])
