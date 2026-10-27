@@ -1,0 +1,33 @@
+namespace Planner.Core;
+public sealed record BoardEntry(Occurrence Occurrence,DateOnly Day,DateTime Start,DateTime End)
+{
+    public bool ContinuesFromYesterday=>Start>Occurrence.Start;
+    public bool ContinuesTomorrow=>End<Occurrence.End;
+    public string TimeText=>Start.ToString("HH:mm")+"—"+(End.Date>Start.Date&&End.TimeOfDay==TimeSpan.Zero?"24:00":End.ToString("HH:mm"));
+}
+public sealed record BoardDay(DateOnly Date,IReadOnlyList<BoardEntry> Entries);
+public static class BoardProjection
+{
+    public static List<DateOnly> MonthDays(DateOnly month)
+    {
+        var first=new DateOnly(month.Year,month.Month,1);var start=Clock.Monday(first);var last=first.AddMonths(1).AddDays(-1);var end=Clock.Monday(last).AddDays(7);
+        return Enumerable.Range(0,end.DayNumber-start.DayNumber).Select(start.AddDays).ToList();
+    }
+    public static List<BoardDay> Range(PlannerState state,DateOnly from,DateOnly until,IEnumerable<string>? visibleTables=null)
+    {
+        var entries=CalendarEngine.ExpandForDisplay(state,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue),visibleTables);var result=new List<BoardDay>();
+        for(var day=from;day<until;day=day.AddDays(1))
+        {
+            var start=day.ToDateTime(TimeOnly.MinValue);var end=start.AddDays(1);
+            result.Add(new(day,entries.Where(o=>o.Start<end&&o.End>start).Select(o=>new BoardEntry(o,day,o.Start<start?start:o.Start,o.End>end?end:o.End)).OrderBy(e=>e.Start).ThenBy(e=>e.Occurrence.Key).ToList()));
+        }
+        return result;
+    }
+    public static EditCommand MoveToDay(PlannerState state,Occurrence occurrence,DateOnly day)
+    {
+        int delta=day.DayNumber-DateOnly.FromDateTime(occurrence.Start).DayNumber;var a=JsonKit.Clone(occurrence.Activity);a.Title=occurrence.Title;a.PlaceId=occurrence.PlaceId;a.StartAt=occurrence.Start.AddDays(delta);a.EndAt=occurrence.End.AddDays(delta);a.DurationMin=(int)(occurrence.End-occurrence.Start).TotalMinutes;
+        if(a.Kind=="ONCE"&&a.ConstraintType=="FLEXIBLE"){a.WindowStart=a.WindowStart?.AddDays(delta);a.WindowEnd=a.WindowEnd?.AddDays(delta);}
+        var reminder=state.Reminders.FirstOrDefault(r=>r.ActivityId==a.Id);
+        return new(){Activity=a,OriginDate=occurrence.OriginDate,ReminderEnabled=reminder?.Enabled??false,ReminderLeadMin=reminder?.LeadMin??15};
+    }
+}

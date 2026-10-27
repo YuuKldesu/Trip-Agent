@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Planner.Core/Planner.Core.csproj"/><ProjectReference Include="../Planner.Data/Planner.Data.csproj"/></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Fixtures/schema-v1.sql"/></ItemGroup>
+</Project>

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><ProjectReference Include="../Planner.Core/Planner.Core.csproj"/><PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5"/></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="schema.sql"/></ItemGroup>
+</Project>

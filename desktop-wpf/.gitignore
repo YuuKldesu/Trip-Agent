@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/Data/
+.packages/
+.dotnet-home/
+.temp/
+qa/
+*.user
+services.json
+*.db
+*.db-wal
+*.db-shm

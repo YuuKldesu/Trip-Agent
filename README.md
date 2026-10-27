@@ -2,6 +2,12 @@
 
 桌面端南京行程规划原型，界面借鉴「场记」的日程与票夹气质。Python 标准库实现，无需安装第三方包。
 
+## 本分支新增：WPF 看板整合版
+
+`desktop-wpf/` 为 C# / WPF 端，采用本仓库月历与列表的视觉结构，保留原 WPF 的多表、周期和单日例外、冲突检查、地图和周课表能力。原 Python 入口与 AI 逻辑保持原样；两端数据独立。本次仅替换 WPF 中央看板，AI 对话整合留待后续任务。
+
+Windows 构建与使用见 [WPF 使用说明](desktop-wpf/README.md)，验证范围见 [验证记录](desktop-wpf/VERIFICATION.md)。设计与取舍见 [整合说明](docs/ui-board-integration.md)。当前工作分支为 `codex/ui-board-integration`。
+
 ## 启动
 
 需要 Python 3.10 或更高版本及 Tkinter（Windows/macOS 官方安装包一般自带；Linux 可能需要安装 python3-tk）。解压后在项目目录运行：
