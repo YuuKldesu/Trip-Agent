@@ -145,7 +145,7 @@ class App(tk.Tk):
         tk.Button(row,text='‹',command=lambda:self.shift(-1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
         tk.Button(row,text='›',command=lambda:self.shift(1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
         tk.Button(row,text='今天',command=self.today,bg='white',fg='#68605a',relief='flat',padx=12,pady=4,cursor='hand2').pack(side='left',padx=8)
-        tk.Label(row,text='周视图  ·  滚动查看全部行程',bg='#f5f3f0',fg='#aaa299').pack(side='right')
+        tk.Label(row,text='月视图  ·  滚动查看全部行程',bg='#f5f3f0',fg='#aaa299').pack(side='right')
         self.week_header=tk.Frame(self.main,bg='#f5f3f0'); self.week_header.pack(fill='x',padx=(0,15))
         self.canvas=tk.Canvas(self.main,bg='#f5f3f0',highlightthickness=0)
         scroll=ttk.Scrollbar(self.main,orient='vertical',command=self.canvas.yview); self.canvas.configure(yscrollcommand=scroll.set); scroll.pack(side='right',fill='y'); self.canvas.pack(fill='both',expand=True)
@@ -162,13 +162,14 @@ class App(tk.Tk):
     def on_wheel(self,event):
         if self.canvas.winfo_exists(): self.canvas.yview_scroll(int(-event.delta/120),'units')
     def shift(self,n):
-        date=dt.date.fromisoformat(self.day.get())+dt.timedelta(days=7*n)
-        self.day.set(date.isoformat()); self.refresh()
+        date=dt.date.fromisoformat(self.day.get()); year,month=divmod(date.year*12+date.month-1+n,12)
+        self.day.set(dt.date(year,month+1,1).isoformat()); self.refresh()
     def today(self):
         self.day.set(dt.date.today().isoformat()); self.refresh()
     def refresh(self):
-        date=dt.date.fromisoformat(self.day.get()); first=date-dt.timedelta(days=date.weekday()); last=first+dt.timedelta(days=6)
-        self.month_label.config(text=f'{first.year}.{first.month:02d}.{first.day:02d} – {last.year}.{last.month:02d}.{last.day:02d}')
+        date=dt.date.fromisoformat(self.day.get()); weeks=calendar.Calendar(firstweekday=0).monthdatescalendar(date.year,date.month)
+        first,last=weeks[0][0],weeks[-1][-1]
+        self.month_label.config(text=f'{date.year} 年 {date.month} 月')
         for widget in self.gridframe.winfo_children(): widget.destroy()
         for widget in self.week_header.winfo_children(): widget.destroy()
         self.wrapping_labels=[]
@@ -179,24 +180,30 @@ class App(tk.Tk):
         for e in data: by_day.setdefault(e['day'],[]).append(e)
         width=max(60,self.canvas.winfo_width()//7-26)
         for i in range(7):
-            day=first+dt.timedelta(days=i); items=by_day.get(day.isoformat(),[]); is_today=day==dt.date.today()
             self.week_header.grid_columnconfigure(i,weight=1,uniform='week'); self.gridframe.grid_columnconfigure(i,weight=1,uniform='week')
-            header=tk.Label(self.week_header,text=f"周{'一二三四五六日'[i]}   {day.month}/{day.day}"+('  · 今天' if is_today else ''),bg='#f5f3f0',fg='#d06d52' if is_today else '#77716a',font=('Microsoft YaHei',9,'bold'),pady=7)
+            header=tk.Label(self.week_header,text=f"周{'一二三四五六日'[i]}",bg='#f5f3f0',fg='#77716a',font=('Microsoft YaHei',9,'bold'),pady=7)
             header.grid(row=0,column=i,sticky='ew')
-            column=tk.Frame(self.gridframe,bg='#f2efeb',padx=3,pady=5,highlightbackground='#e6e0da',highlightthickness=1)
-            column.grid(row=0,column=i,sticky='nsew'); self.gridframe.grid_rowconfigure(0,weight=1,minsize=280)
-            if not items: tk.Label(column,text='—',bg='#f2efeb',fg='#c9c0b7').pack(pady=8)
-            for e in items:
-                card=tk.Frame(column,bg='white',padx=6,pady=7,highlightbackground='#e8dfd9',highlightthickness=1); card.pack(fill='x',pady=(0,6))
-                def add_label(text,fg,font):
-                    label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=width)
-                    label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label)
-                add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),'#d06d52',('Arial',9,'bold'))
-                add_label(e['title'],'#302c29',('Microsoft YaHei',10,'bold'))
-                add_label('地点：'+e['location'],'#77716a',('Microsoft YaHei',9))
-                add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
-                if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
-                tk.Button(card,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(anchor='e')
+        for old_row in range(6): self.gridframe.grid_rowconfigure(old_row,weight=0,minsize=0)
+        for r,week in enumerate(weeks):
+            self.gridframe.grid_rowconfigure(r,weight=0,minsize=88)
+            for i,day in enumerate(week):
+                items=by_day.get(day.isoformat(),[]); is_today=day==dt.date.today(); current=day.month==date.month
+                bg='#f2efeb' if current else '#f8f6f3'
+                column=tk.Frame(self.gridframe,bg=bg,padx=3,pady=5,highlightbackground='#e6e0da',highlightthickness=1)
+                column.grid(row=r,column=i,sticky='nsew')
+                day_label=tk.Label(column,text=str(day.day)+('  · 今天' if is_today else ''),bg=bg,fg='#d06d52' if is_today else ('#66605a' if current else '#c1b8af'),font=('Microsoft YaHei',9,'bold'),anchor='w')
+                day_label.pack(fill='x',padx=3,pady=(0,5))
+                for e in items:
+                    card=tk.Frame(column,bg='white',padx=6,pady=7,highlightbackground='#e8dfd9',highlightthickness=1); card.pack(fill='x',pady=(0,6))
+                    def add_label(text,fg,font):
+                        label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=width)
+                        label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label)
+                    add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),'#d06d52',('Arial',9,'bold'))
+                    add_label(e['title'],'#302c29',('Microsoft YaHei',10,'bold'))
+                    add_label('地点：'+e['location'],'#77716a',('Microsoft YaHei',9))
+                    add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
+                    if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
+                    tk.Button(card,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(anchor='e')
         self.canvas.yview_moveto(0)
     def delete(self,event_id):
         if messagebox.askyesno('删除行程','确定删除这项行程吗？',parent=self):
