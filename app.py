@@ -253,7 +253,7 @@ def update_completed(event_id,completed):
 class App(tk.Tk):
     def __init__(self):
         super().__init__(); self.title('南京行程 Agent'); self.geometry('1000x700'); self.minsize(800,580)
-        self.theme=theme_for(settings().get('theme'))
+        self.display_settings=settings(); self.theme=theme_for(self.display_settings.get('theme'))
         self.configure(bg='#f5f3f0')
         self.option_add('*Font', ('Microsoft YaHei', 10))
         self.main=tk.Frame(self,bg='#f5f3f0',padx=30,pady=14); self.main.pack(fill='both',expand=True)
@@ -282,8 +282,11 @@ class App(tk.Tk):
         self.week_header=tk.Frame(self.main,bg='#f5f3f0'); self.week_header.pack(fill='x',padx=(0,15))
         self.canvas=tk.Canvas(self.main,bg='#f5f3f0',highlightthickness=0)
         self.scroll=ttk.Scrollbar(self.main,orient='vertical',command=self.canvas.yview); self.canvas.configure(yscrollcommand=self.on_scroll); self.scroll.pack(side='right',fill='y'); self.canvas.pack(fill='both',expand=True)
-        self.gridframe=tk.Frame(self.canvas,bg='#eeeae5'); self.canvas_window=self.canvas.create_window((0,0),window=self.gridframe,anchor='nw')
-        self.gridframe.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.boards={name:tk.Frame(self.canvas,bg='#eeeae5') for name in ('month','list')}
+        self.gridframe=self.boards['month']; self.canvas_window=self.canvas.create_window((0,0),window=self.gridframe,anchor='nw')
+        self.board_cache={}; self.board_scroll={}
+        for board in self.boards.values():
+            board.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')) if e.widget is self.gridframe else None)
         self.canvas.bind('<Configure>',self.resize_board)
         self.canvas.bind_all('<MouseWheel>',self.on_wheel)
         self.refresh()
@@ -316,24 +319,44 @@ class App(tk.Tk):
     def today(self):
         self.day.set(dt.date.today().isoformat()); self.refresh()
     def set_view(self,view):
-        self.view.set(view); self.refresh()
+        if view==self.view.get(): return
+        previous=self.view.get(); self.board_scroll[previous]=self.canvas.yview()[0]
+        self.view.set(view); self.show_board()
     def refresh(self):
+        self.board_cache.clear(); self.show_board()
+    def show_board(self):
+        view=self.view.get(); self.gridframe=self.boards[view]
+        self.canvas.itemconfigure(self.canvas_window,window=self.gridframe,width=self.canvas.winfo_width())
         self.month_button.config(bg=self.theme['accent'] if self.view.get()=='month' else 'white',fg='white' if self.view.get()=='month' else '#68605a')
         self.list_button.config(bg=self.theme['accent'] if self.view.get()=='list' else 'white',fg='white' if self.view.get()=='list' else '#68605a')
+        if view=='list':
+            self.month_controls.pack_forget(); self.week_header.pack_forget()
+        else:
+            if not self.month_controls.winfo_manager(): self.month_controls.pack(side='left',after=self.month_label)
+            if not self.week_header.winfo_manager(): self.week_header.pack(fill='x',padx=(0,15),before=self.canvas)
+        if view in self.board_cache:
+            self.wrapping_labels,self.completion_widgets,self.list_headings=self.board_cache[view]
+            if view=='month':
+                date=dt.date.fromisoformat(self.day.get()); self.month_label.config(text=f'{date.year} 年 {date.month} 月')
+            self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+            self.canvas.yview_moveto(self.board_scroll.get(view,0))
+            self.resize_board(type('Size',(),{'width':self.canvas.winfo_width()})())
+            if view=='list': self.after_idle(self.update_list_date)
+            return
         if self.view.get()=='list':
-            self.month_controls.pack_forget(); self.refresh_list(); return
-        if not self.month_controls.winfo_ismapped(): self.month_controls.pack(side='left',after=self.month_label)
+            self.refresh_list(); self.board_cache[view]=(self.wrapping_labels,self.completion_widgets,self.list_headings); return
         date=dt.date.fromisoformat(self.day.get()); weeks=calendar.Calendar(firstweekday=0).monthdatescalendar(date.year,date.month)
         first,last=weeks[0][0],weeks[-1][-1]
         self.month_label.config(text=f'{date.year} 年 {date.month} 月')
         for widget in self.gridframe.winfo_children(): widget.destroy()
         for widget in self.week_header.winfo_children(): widget.destroy()
-        self.wrapping_labels=[]
+        self.wrapping_labels=[]; self.completion_widgets={}; self.list_headings=[]
         with db() as c:
             c.row_factory=sqlite3.Row
             data=[dict(r) for r in c.execute('SELECT * FROM events WHERE day BETWEEN ? AND ? ORDER BY day,start,id',(first.isoformat(),last.isoformat()))]
         by_day={}
-        for e in data: by_day.setdefault(e['day'],[]).append(e)
+        for e in data:
+            if self.event_visible(e): by_day.setdefault(e['day'],[]).append(e)
         width=max(60,self.canvas.winfo_width()//7-26)
         for i in range(7):
             self.week_header.grid_columnconfigure(i,weight=1,uniform='week'); self.gridframe.grid_columnconfigure(i,weight=1,uniform='week')
@@ -353,29 +376,36 @@ class App(tk.Tk):
                     card=tk.Frame(column,bg='white',padx=6,pady=7,highlightbackground='#e8dfd9',highlightthickness=1); card.pack(fill='x',pady=(0,6))
                     def add_label(text,fg,font):
                         label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=width)
-                        label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label)
+                        label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label); return label
                     add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),self.theme['accent'],('Arial',9,'bold'))
-                    add_label(('✓  ' if e['completed'] else '')+e['title'],'#aaa39c' if e['completed'] else '#302c29',('Microsoft YaHei',10,'overstrike') if e['completed'] else ('Microsoft YaHei',10,'bold'))
+                    mark=tk.Button(card,text='●' if e['completed'] else '○',command=lambda entry=e:self.set_completed(entry),bg='white',activebackground='white',fg=self.theme['accent'],relief='flat',borderwidth=0,font=('Arial',14),cursor='hand2')
+                    mark.pack(anchor='w')
+                    title_label=add_label(e['title'],'#aaa39c' if e['completed'] else '#302c29',('Microsoft YaHei',10,'overstrike') if e['completed'] else ('Microsoft YaHei',10,'bold'))
+                    self.completion_widgets[e['id']]=(mark,title_label)
                     add_label('地点：'+e['location'],'#aaa39c' if e['completed'] else '#77716a',('Microsoft YaHei',9))
                     add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
                     if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
                     self.bind_card(card,e['id'])
-        self.canvas.yview_moveto(0)
+        self.canvas.yview_moveto(0); self.board_cache[view]=(self.wrapping_labels,self.completion_widgets,self.list_headings)
+    def event_visible(self,event):
+        cfg=self.display_settings
+        return cfg.get('show_completed',True) if event['completed'] else cfg.get('show_incomplete',True)
     def refresh_list(self):
         self.month_label.config(text='全部行程')
         for widget in self.gridframe.winfo_children(): widget.destroy()
-        for widget in self.week_header.winfo_children(): widget.destroy()
         for row in range(6): self.gridframe.grid_rowconfigure(row,weight=0,minsize=0)
         self.wrapping_labels=[]; self.list_headings=[]; self.completion_widgets={}
-        events=all_rows()
+        events=[event for event in all_rows() if self.event_visible(event)]
+        counts={}
+        for event in events: counts[event['day']]=counts.get(event['day'],0)+1
         wrapper=tk.Frame(self.gridframe,bg='#f5f3f0',padx=8,pady=8); wrapper.grid(row=0,column=0,columnspan=7,sticky='nsew')
         if not events:
-            tk.Label(wrapper,text='还没有行程',bg='#f5f3f0',fg='#a39a90',font=('Microsoft YaHei',11)).pack(anchor='w',pady=30)
+            tk.Label(wrapper,text='没有符合显示设置的行程',bg='#f5f3f0',fg='#a39a90',font=('Microsoft YaHei',11)).pack(anchor='w',pady=30)
         current_day=None; previous=None
         for e in events:
             if e['day']!=current_day:
                 current_day=e['day']; previous=None; d=dt.date.fromisoformat(current_day)
-                day_events=sum(1 for item in events if item['day']==current_day)
+                day_events=counts[current_day]
                 heading=tk.Frame(wrapper,bg='#f5f3f0'); heading.pack(fill='x',pady=(16,10)); self.list_headings.append((current_day,heading))
                 tk.Label(heading,text=f"{d.day}  周{'一二三四五六日'[d.weekday()]}",bg='#f5f3f0',fg='#292725',font=('Microsoft YaHei',15,'bold')).pack(side='left')
                 tk.Label(heading,text=f'{d.year} 年 {d.month} 月',bg='#f5f3f0',fg='#9b948e',font=('Microsoft YaHei',11)).pack(side='left',padx=12)
@@ -411,9 +441,13 @@ class App(tk.Tk):
         try: update_completed(event_id,completed)
         except Exception as ex: messagebox.showerror('保存失败',str(ex)); return
         entry['completed']=int(completed)
+        self.board_cache.pop('list' if self.view.get()=='month' else 'month',None)
+        if not self.event_visible(entry):
+            position=self.canvas.yview()[0]; self.refresh(); self.after_idle(lambda:self.canvas.yview_moveto(position)); return
         mark,title=self.completion_widgets[event_id]
         mark.config(text='●' if completed else '○')
-        if title: title.config(fg='#a6a09b' if completed else '#302c29',font=('Microsoft YaHei',12,'overstrike') if completed else ('Microsoft YaHei',12,'bold'))
+        size=10 if self.view.get()=='month' else 12
+        if title: title.config(fg='#a6a09b' if completed else '#302c29',font=('Microsoft YaHei',size,'overstrike') if completed else ('Microsoft YaHei',size,'bold'))
     def bind_card(self,widget,event_id):
         # Buttons retain their own actions; clicking the card or its text opens the editor.
         if isinstance(widget,(tk.Frame,tk.Label)):
@@ -672,16 +706,23 @@ class App(tk.Tk):
             item=tk.Frame(palette); item.pack(side='left',padx=(0,8))
             tk.Label(item,text='●',fg=colors['accent'],font=('Arial',16)).pack(side='left')
             ttk.Radiobutton(item,text=name,variable=selected,value=name).pack(side='left')
+        ttk.Label(frame,text='显示行程').grid(row=15,column=0,sticky='w',pady=(12,4))
+        display_row=ttk.Frame(frame); display_row.grid(row=16,column=0,sticky='w')
+        show_completed=tk.BooleanVar(value=cfg.get('show_completed',True))
+        show_incomplete=tk.BooleanVar(value=cfg.get('show_incomplete',True))
+        ttk.Checkbutton(display_row,text='已完成',variable=show_completed).pack(side='left',padx=(0,16))
+        ttk.Checkbutton(display_row,text='未完成',variable=show_incomplete).pack(side='left')
         def save():
             cfg.update({k:v.get().strip() for k,v in values.items()}); cfg.update(theme=selected.get(),llm_provider=provider.get(),bailian_region=region.get(),bailian_host=host.get().strip())
+            cfg.update(show_completed=show_completed.get(),show_incomplete=show_incomplete.get())
             CONFIG.write_text(json.dumps(cfg,ensure_ascii=False),encoding='utf-8')
             try: CONFIG.chmod(0o600)
             except OSError: pass
-            self.theme=theme_for(selected.get())
+            self.display_settings=cfg; self.theme=theme_for(selected.get())
             self.composer_label.config(fg=self.theme['accent']); self.input.config(insertbackground=self.theme['accent'])
             self.add.config(bg=self.theme['accent'],activebackground=self.theme['hover']); self.refresh()
             win.destroy()
-        ttk.Button(frame,text='保存',command=save).grid(row=15,column=0,sticky='e',pady=(12,0))
+        ttk.Button(frame,text='保存',command=save).grid(row=17,column=0,sticky='e',pady=(12,0))
     def ask_choice(self,title,description,choices):
         # Called by a worker; Tk widgets are created on the UI thread.
         done=threading.Event(); answer={'value':None}
