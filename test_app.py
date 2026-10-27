@@ -133,6 +133,12 @@ class Tests(unittest.TestCase):
                 app.update_completed(entries[0]['id'],True); self.assertEqual(app.all_rows()[0]['completed'],1)
                 app.update_completed(entries[0]['id'],False); self.assertEqual(app.all_rows()[0]['completed'],0)
         finally: app.DB=original
+    def test_visible_list_date_tracks_scroll(self):
+        headings=[('2026-10-28',20),('2026-10-31',280),('2026-11-01',560)]
+        self.assertEqual(app.visible_list_date(headings,0),'2026-10-28')
+        self.assertEqual(app.visible_list_date(headings,275),'2026-10-31')
+        self.assertEqual(app.visible_list_date(headings,600),'2026-11-01')
+        self.assertIsNone(app.visible_list_date([],0))
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):
