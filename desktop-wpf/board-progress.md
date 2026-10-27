@@ -8,4 +8,6 @@ Task 1: complete — initial RED then 56/56 GREEN, original47 retained; preferen
 Task 2: complete — actual WPF checks15/15; screenshots exposed narrow-window layout issue, promoted to final review fix.
 Final review: fresh read-only reviewer board_final_review found3 Important, no Critical or Minor. Scope comparison confirms Python and original AI/service source unchanged.
 Final: fixed nonuniform month columns/header alignment, stale empty-list navigation and unsynchronized selected week — three actual WPF regression checks observed RED then GREEN; final WPF19/19, domain56/56; build0 warnings/errors. Published EXE smoke exit0.
-Task 3 in progress: separate publish, archive checks and local branch commit. No merge or push.
+Task 3: complete — separate self-contained publish, domain56/56 and actualWPF19/19, runtime426 entries SHA256 verified, extracted EXE smoke exit0. Branch retained locally, no main modification/merge/push.
+Additional baseline check: unchanged Python suite26/28, two pre-existing Windows temporary SQLite cleanup handle errors; recorded in VERIFICATION, no unrelated Python fix.
+Final review declines: real mouse drag/dialog-save combinations not independently operated; UI-event checks plus domain identity tests and unchanged editor services are the evidence. Live AI/maps explicitly deferred. Archive contents checked by implementer. Save-failure behavior inspected, disk failure not injected.
