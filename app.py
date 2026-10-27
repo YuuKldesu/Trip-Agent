@@ -87,7 +87,7 @@ def parse_local(text, today=None):
 def parse(text,key):
     if not key: return parse_local(text)
     today=dt.date.today().isoformat()
-    body={'model':'deepseek-chat','messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
+    body={'model':'deepseek-flash','thinking':{'type':'disabled'},'messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
     req=urllib.request.Request('https://api.deepseek.com/chat/completions',data=json.dumps(body,ensure_ascii=False).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
     with urllib.request.urlopen(req,timeout=30) as response: result=json.load(response)
     return json.loads(result['choices'][0]['message']['content'])
