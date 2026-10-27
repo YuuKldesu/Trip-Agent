@@ -35,7 +35,8 @@ def request_json(req, stage, timeout=12, retries=0):
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
-            raise ValueError(f'{stage}：服务返回 HTTP {exc.code}。请检查 API Key、余额和服务权限。') from exc
+            hint = ('身份验证失败，请核对 API Key、服务商和地域。' if exc.code==401 else '账户余额不足，请检查余额。' if exc.code==402 else '请检查服务权限和配置。')
+            raise ValueError(f'{stage}：服务返回 HTTP {exc.code}。{hint}') from exc
         except (urllib.error.URLError, ssl.SSLError, socket.timeout, ConnectionError, TimeoutError) as exc:
             reason=getattr(exc,'reason',exc)
             temporary=isinstance(reason,(ssl.SSLEOFError, socket.timeout, ConnectionError, TimeoutError)) or 'UNEXPECTED_EOF_WHILE_READING' in str(reason)
@@ -113,12 +114,25 @@ def parse_local(text, today=None):
     title=activity+' · '+place
     return {'day':day.isoformat(),'location':place,'title':title,'duration':minutes,'start':start}
 
-def parse(text,key):
-    if not key: return parse_local(text)
+def parse(text, cfg):
+    provider=cfg.get('llm_provider') or ('DeepSeek' if cfg.get('deepseek_key') else '本地规则')
+    if provider=='本地规则': return parse_local(text)
+    if provider=='DeepSeek':
+        key=cfg.get('deepseek_key','').strip(); stage='DeepSeek 解析'; url='https://api.deepseek.com/chat/completions'
+        extra={'model':'deepseek-flash','thinking':{'type':'disabled'}}
+    elif provider=='阿里云百炼':
+        key=cfg.get('bailian_key','').strip(); stage='阿里云百炼解析'
+        hosts={'北京':'https://dashscope.aliyuncs.com','新加坡':'https://dashscope-intl.aliyuncs.com'}
+        region=cfg.get('bailian_region','北京')
+        if region not in hosts: raise ValueError('百炼地域配置无效，请在设置中重新选择。')
+        url=hosts[region]+'/compatible-mode/v1/chat/completions'
+        extra={'model':'qwen-plus','enable_thinking':False}
+    else: raise ValueError('大模型服务配置无效，请在设置中重新选择。')
+    if not key: raise ValueError(f'请选择的 {provider} 未填写 API Key，请到设置填写，或选择本地规则。')
     today=dt.date.today().isoformat()
-    body={'model':'deepseek-flash','thinking':{'type':'disabled'},'messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
-    req=urllib.request.Request('https://api.deepseek.com/chat/completions',data=json.dumps(body,ensure_ascii=False).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
-    result=request_json(req,'DeepSeek 解析',timeout=30)
+    body={**extra,'messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
+    req=urllib.request.Request(url,data=json.dumps(body,ensure_ascii=False).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
+    result=request_json(req,stage,timeout=30)
     return json.loads(result['choices'][0]['message']['content'])
 
 def validate(e):
@@ -363,19 +377,25 @@ class App(tk.Tk):
             with db() as c: c.execute('DELETE FROM events WHERE id=?',(event_id,))
             self.refresh()
     def config_dialog(self):
-        win=tk.Toplevel(self); win.title('API 设置'); win.transient(self); win.grab_set(); frame=ttk.Frame(win,padding=20); frame.pack(fill='both',expand=True); cfg=settings(); values={}
-        for i,(key,label) in enumerate([('deepseek_key','DeepSeek API Key'),('amap_key','高德 Web 服务 API Key')]):
-            ttk.Label(frame,text=label).grid(row=i*2,column=0,sticky='w'); var=tk.StringVar(value=cfg.get(key,'')); values[key]=var; ttk.Entry(frame,textvariable=var,show='*',width=55).grid(row=i*2+1,column=0,pady=(3,12))
-        ttk.Label(frame,text='密钥明文存储于本机用户目录，请勿分享配置文件。').grid(row=4,column=0,sticky='w')
-        ttk.Label(frame,text='主题色').grid(row=5,column=0,sticky='w',pady=(16,4))
+        win=tk.Toplevel(self); win.title('设置'); win.transient(self); win.grab_set(); frame=ttk.Frame(win,padding=20); frame.pack(fill='both',expand=True); cfg=settings(); values={}
+        ttk.Label(frame,text='自然语言解析方式').grid(row=0,column=0,sticky='w')
+        provider=tk.StringVar(value=cfg.get('llm_provider') or ('DeepSeek' if cfg.get('deepseek_key') else '本地规则'))
+        ttk.Combobox(frame,textvariable=provider,values=['本地规则','DeepSeek','阿里云百炼'],state='readonly',width=20).grid(row=1,column=0,sticky='w',pady=(3,8))
+        for i,(key,label) in enumerate([('deepseek_key','DeepSeek 官方 API Key'),('bailian_key','阿里云百炼 API Key'),('amap_key','高德 Web 服务 API Key')]):
+            ttk.Label(frame,text=label).grid(row=2+i*2,column=0,sticky='w'); var=tk.StringVar(value=cfg.get(key,'')); values[key]=var
+            ttk.Entry(frame,textvariable=var,show='*',width=62).grid(row=3+i*2,column=0,sticky='ew',pady=(2,8))
+        ttk.Label(frame,text='百炼地域（须与 Key 所属地域一致）').grid(row=8,column=0,sticky='w')
+        region=tk.StringVar(value=cfg.get('bailian_region','北京')); ttk.Combobox(frame,textvariable=region,values=['北京','新加坡'],state='readonly',width=20).grid(row=9,column=0,sticky='w',pady=(2,8))
+        ttk.Label(frame,text='密钥明文存储于本机用户目录，请勿分享配置文件。').grid(row=10,column=0,sticky='w')
+        ttk.Label(frame,text='主题色').grid(row=11,column=0,sticky='w',pady=(14,4))
         selected=tk.StringVar(value=cfg.get('theme') if cfg.get('theme') in THEMES else '暖珊瑚')
-        palette=tk.Frame(frame); palette.grid(row=6,column=0,sticky='w')
+        palette=tk.Frame(frame); palette.grid(row=12,column=0,sticky='w')
         for name,colors in THEMES.items():
             item=tk.Frame(palette); item.pack(side='left',padx=(0,8))
             tk.Label(item,text='●',fg=colors['accent'],font=('Arial',16)).pack(side='left')
             ttk.Radiobutton(item,text=name,variable=selected,value=name).pack(side='left')
         def save():
-            cfg.update({k:v.get().strip() for k,v in values.items()}); cfg['theme']=selected.get()
+            cfg.update({k:v.get().strip() for k,v in values.items()}); cfg.update(theme=selected.get(),llm_provider=provider.get(),bailian_region=region.get())
             CONFIG.write_text(json.dumps(cfg,ensure_ascii=False),encoding='utf-8')
             try: CONFIG.chmod(0o600)
             except OSError: pass
@@ -383,14 +403,14 @@ class App(tk.Tk):
             self.composer_label.config(fg=self.theme['accent']); self.input.config(insertbackground=self.theme['accent'])
             self.add.config(bg=self.theme['accent'],activebackground=self.theme['hover']); self.refresh()
             win.destroy()
-        ttk.Button(frame,text='保存',command=save).grid(row=7,column=0,sticky='e',pady=(12,0))
+        ttk.Button(frame,text='保存',command=save).grid(row=13,column=0,sticky='e',pady=(12,0))
     def submit(self):
         text=self.input.get('1.0','end').strip(); mode=self.mode.get(); cfg=settings()
         if not text: return
         self.add.config(state='disabled'); self.status.config(text='正在解析和计算路线…')
         def work():
             try:
-                e=parse(text,cfg.get('deepseek_key')); validate(e); e['notes']=text; place,coord,note=geocode(e['location'],cfg.get('amap_key')); e['coord']=coord; e['location']=place
+                e=parse(text,cfg); validate(e); e['notes']=text; place,coord,note=geocode(e['location'],cfg.get('amap_key')); e['coord']=coord; e['location']=place
                 existing=rows(e['day']); result=plan(e,existing,lambda a,b:travel(a,b,cfg.get('amap_key'),mode))
                 self.after(0,lambda:self.confirm(e,result,note,mode))
             except Exception as ex:

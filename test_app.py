@@ -63,6 +63,18 @@ class Tests(unittest.TestCase):
         for theme in app.THEMES.values():
             self.assertEqual(set(theme),{'accent','hover','tint'})
             for color in theme.values(): self.assertRegex(color,r'^#[0-9a-fA-F]{6}$')
+    def test_bailian_request_and_region(self):
+        response={'choices':[{'message':{'content':'{"day":"2026-10-28","location":"南京博物院","title":"参观博物院","duration":120,"start":null}'}}]}
+        with patch('app.request_json',return_value=response) as mock:
+            e=app.parse('明天去南京博物院参观2小时',{'llm_provider':'阿里云百炼','bailian_key':'test-key','bailian_region':'新加坡'})
+        req=mock.call_args.args[0]
+        self.assertTrue(req.full_url.startswith('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/'))
+        import json
+        body=json.loads(req.data)
+        self.assertEqual(body['model'],'qwen-plus'); self.assertFalse(body['enable_thinking']); self.assertEqual(e['duration'],120)
+    def test_bailian_requires_own_key(self):
+        with self.assertRaisesRegex(ValueError,'未填写 API Key'):
+            app.parse('明天在南京博物院参观，约2小时',{'llm_provider':'阿里云百炼','deepseek_key':'some-other-key'})
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):
