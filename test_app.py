@@ -1,5 +1,7 @@
 import unittest, datetime as dt, tempfile, sqlite3
 from pathlib import Path
+from unittest.mock import patch
+import ssl, urllib.error, urllib.request, io
 import app
 from app import parse_local, validate, plan, travel
 
@@ -30,6 +32,19 @@ class Tests(unittest.TestCase):
         self.assertIsNone(app.short_gap(first,{'day':'2026-10-27','start':720}))
         self.assertIsNone(app.short_gap(first,{'day':'2026-10-28','start':692}))
         self.assertIsNone(app.short_gap(first,{'day':'2026-10-27','start':650}))
+    def test_temporary_ssl_eof_retries(self):
+        error=urllib.error.URLError(ssl.SSLEOFError('UNEXPECTED_EOF_WHILE_READING'))
+        response=io.BytesIO(b'{"status":"1"}')
+        with patch('app.urllib.request.urlopen',side_effect=[error,response]) as mock, patch('app.time.sleep'):
+            result=app.fetch('https://restapi.amap.com/test',{'key':'secret'},'高德地点查询')
+        self.assertEqual(result['status'],'1')
+        self.assertEqual(mock.call_count,2)
+    def test_ssl_error_does_not_expose_key(self):
+        error=urllib.error.URLError(ssl.SSLEOFError('UNEXPECTED_EOF_WHILE_READING'))
+        with patch('app.urllib.request.urlopen',side_effect=error), patch('app.time.sleep'):
+            with self.assertRaises(ValueError) as caught: app.fetch('https://restapi.amap.com/test',{'key':'secret'},'高德路线查询')
+        self.assertIn('高德路线查询',str(caught.exception))
+        self.assertNotIn('secret',str(caught.exception))
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

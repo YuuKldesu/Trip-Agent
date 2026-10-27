@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sqlite3, os, json, re, math, urllib.request, urllib.parse, datetime as dt, threading, calendar
+import sqlite3, os, json, re, math, urllib.request, urllib.parse, urllib.error, datetime as dt, threading, calendar, ssl, socket, time
 from pathlib import Path
 
 HOME = Path.home() / '.nanjing_trip_agent'
@@ -20,16 +20,36 @@ def settings():
     try: return json.loads(CONFIG.read_text(encoding='utf-8'))
     except (OSError, ValueError): return {}
 
-def fetch(url, params):
+def request_json(req, stage, timeout=12, retries=0):
+    for attempt in range(retries+1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as exc:
+            raise ValueError(f'{stage}：服务返回 HTTP {exc.code}。请检查 API Key、余额和服务权限。') from exc
+        except (urllib.error.URLError, ssl.SSLError, socket.timeout, ConnectionError, TimeoutError) as exc:
+            reason=getattr(exc,'reason',exc)
+            temporary=isinstance(reason,(ssl.SSLEOFError, socket.timeout, ConnectionError, TimeoutError)) or 'UNEXPECTED_EOF_WHILE_READING' in str(reason)
+            if attempt < retries and temporary:
+                time.sleep(0.4*(attempt+1)); continue
+            if isinstance(reason,ssl.SSLCertVerificationError):
+                hint='证书验证失败，请检查系统时间、代理或杀毒软件的 HTTPS 检查设置。'
+            elif 'UNEXPECTED_EOF_WHILE_READING' in str(reason) or isinstance(reason,ssl.SSLEOFError):
+                hint='HTTPS 连接被提前中断，可能与网络、代理或服务暂时不可用有关。请检查代理设置，或切换网络后重试。'
+            else:
+                hint='无法连接服务，请检查网络、代理和防火墙设置后重试。'
+            raise ValueError(f'{stage}：{hint}\n错误类型：{type(reason).__name__}') from exc
+
+def fetch(url, params, stage='高德请求'):
     req = urllib.request.Request(url+'?'+urllib.parse.urlencode(params), headers={'User-Agent':'NanjingTripAgent/1.0'})
-    with urllib.request.urlopen(req, timeout=12) as response: return json.load(response)
+    return request_json(req,stage,timeout=12,retries=2)
 
 def geocode(place, key):
     if not key:
         for name, coord in PLACES.items():
             if name in place or place in name: return name, coord, '示例地点坐标'
         raise ValueError('未配置高德 Key：本地体验模式仅支持预置地点。请在设置中配置 Key。')
-    data = fetch('https://restapi.amap.com/v3/place/text', {'key':key,'keywords':place,'city':'南京','citylimit':'true','offset':10,'page':1})
+    data = fetch('https://restapi.amap.com/v3/place/text', {'key':key,'keywords':place,'city':'南京','citylimit':'true','offset':10,'page':1}, '高德地点查询')
     if data.get('status') != '1': raise ValueError('高德地点查询失败：'+str(data.get('info')))
     pois = data.get('pois', [])
     valid = [p for p in pois if p.get('cityname') == '南京市' and isinstance(p.get('location'),str) and p.get('location')]
@@ -43,7 +63,7 @@ def travel(a,b,key,mode):
         kind = {'驾车':'driving','步行':'walking','公交':'transit/integrated'}[mode]
         params = {'key':key,'origin':a,'destination':b}
         if mode == '公交': params.update(city='南京',cityd='南京')
-        data = fetch('https://restapi.amap.com/v3/direction/'+kind, params)
+        data = fetch('https://restapi.amap.com/v3/direction/'+kind, params, '高德路线查询')
         if data.get('status') != '1': raise ValueError('高德路线查询失败：'+str(data.get('info')))
         route=data.get('route',{})
         paths=route.get('transits' if mode=='公交' else 'paths',[])
@@ -89,7 +109,7 @@ def parse(text,key):
     today=dt.date.today().isoformat()
     body={'model':'deepseek-flash','thinking':{'type':'disabled'},'messages':[{'role':'system','content':'你是行程信息提取器，只返回JSON对象，字段 day(YYYY-MM-DD), location(地点名称), title(包含具体活动及对象或地点的完整名称，如参观南京博物院，不要仅写参观), duration(整数分钟), start(当天零点起分钟数，未指定精确开始时间为null)。无法确定日期、地点或耗时则相应字段为null，不要猜测。仅提取，不规划。今天是'+today},{'role':'user','content':text}], 'response_format':{'type':'json_object'},'temperature':0}
     req=urllib.request.Request('https://api.deepseek.com/chat/completions',data=json.dumps(body,ensure_ascii=False).encode(),headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},method='POST')
-    with urllib.request.urlopen(req,timeout=30) as response: result=json.load(response)
+    result=request_json(req,'DeepSeek 解析',timeout=30)
     return json.loads(result['choices'][0]['message']['content'])
 
 def validate(e):
