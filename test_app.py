@@ -139,6 +139,10 @@ class Tests(unittest.TestCase):
         self.assertEqual(app.visible_list_date(headings,275),'2026-10-31')
         self.assertEqual(app.visible_list_date(headings,600),'2026-11-01')
         self.assertIsNone(app.visible_list_date([],0))
+    def test_duration_from_start_end(self):
+        self.assertEqual(app.duration_between('09:15','11:45'),150)
+        for start,end in [('10:00','10:00'),('23:00','01:00'),('08:00','21:00')]:
+            with self.subTest(start=start,end=end), self.assertRaises(ValueError): app.duration_between(start,end)
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

@@ -1,4 +1,6 @@
 import tkinter as tk
+import sys
+from planner_panel import PlannerPanel
 from tkinter import ttk, messagebox, simpledialog
 import sqlite3, os, json, re, math, urllib.request, urllib.parse, urllib.error, datetime as dt, threading, calendar, ssl, socket, time
 from pathlib import Path
@@ -169,7 +171,7 @@ def parse(text, cfg, multiple=False):
     if multiple:
         body['messages'][0]['content']=(
             '只返回JSON对象，包含 events 数组，按用户要求的顺序逐项完整提取，每项字段：'
-            'day YYYY-MM-DD、title、location、duration整数分钟、start整数(精确开始时间距午夜的分钟，未指定则null)、'
+            'day YYYY-MM-DD、title、location、duration整数分钟、start整数(精确开始时间距午夜的分钟，未指定则null)、end整数（明确指定结束时刻距午夜的分钟，否则null）、'
             'earliest整数(最早开始时刻，早上为480，下午为720，未限制为null)、'
             'latest_end整数(必须结束或到达的最晚分钟，未限制为null)、'
             'notes(仅针对该项活动的简短中文摘要，提取用户明确提到的具体要求、同行人或限制，不重复完整输入、不虚构；无额外细节时为空字符串)、'
@@ -216,6 +218,12 @@ def parse_clock(value):
     hour,minute=map(int,match.groups())
     if hour>23 or minute>59: raise ValueError('开始时间无效。')
     return hour*60+minute
+
+def duration_between(start,end):
+    a=parse_clock(start); b=parse_clock(end)
+    if b<=a: raise ValueError('结束时间必须晚于开始时间，暂不支持跨天。')
+    if b-a>720: raise ValueError('活动耗时不能超过 720 分钟。')
+    return b-a
 
 def short_gap(previous, current):
     if previous['day'] != current['day']: return None
@@ -418,18 +426,30 @@ class App(tk.Tk):
             row=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
         old=dict(row)
-        win=tk.Toplevel(self); win.title('编辑行程'); win.transient(self); win.grab_set(); win.geometry('560x550')
+        win=tk.Toplevel(self); win.title('编辑行程'); win.transient(self); win.grab_set(); win.geometry('560x640')
         body=ttk.Frame(win,padding=20); body.pack(fill='both',expand=True)
         fields={}
         for key,label,value in [('title','活动名称',old['title']),('day','日期（YYYY-MM-DD）',old['day']),('start','开始时间（HH:MM）',hm(old['start'])),('location','地点',old['location']),('duration','耗时（分钟）',str(old['duration']))]:
             ttk.Label(body,text=label).pack(anchor='w'); var=tk.StringVar(value=value); fields[key]=var
-            ttk.Entry(body,textvariable=var).pack(fill='x',pady=(2,8))
+            ttk.Entry(body,textvariable=var,state='readonly' if key=='duration' else 'normal').pack(fill='x',pady=(2,8))
+        ttk.Label(body,text='结束时间（HH:MM，修改后自动计算耗时）').pack(anchor='w')
+        end_var=tk.StringVar(value=hm(old['start']+old['duration'])); ttk.Entry(body,textvariable=end_var).pack(fill='x',pady=(2,8))
+        def sync_duration(*_):
+            try:
+                st=parse_clock(fields['start'].get()); en=parse_clock(end_var.get())
+                if en>st: fields['duration'].set(str(en-st))
+            except ValueError: pass
+        end_var.trace_add('write',sync_duration); fields['start'].trace_add('write',sync_duration)
         ttk.Label(body,text='备注').pack(anchor='w'); notes=tk.Text(body,height=3,wrap='word'); notes.pack(fill='x',pady=(2,8)); notes.insert('1.0',old.get('notes',''))
         ttk.Label(body,text='校验交通方式').pack(anchor='w'); mode=tk.StringVar(value='公交'); ttk.Combobox(body,textvariable=mode,values=['公交','驾车','步行','骑行'],state='readonly',width=12).pack(anchor='w',pady=(2,8))
         status=ttk.Label(body,text=''); status.pack(anchor='w'); save=ttk.Button(body,text='检查并保存'); save.pack(anchor='e',pady=(8,0))
         def submit_edit():
             try:
                 new={'title':fields['title'].get().strip(),'day':fields['day'].get().strip(),'start':parse_clock(fields['start'].get()),'location':fields['location'].get().strip(),'duration':int(fields['duration'].get().strip()),'notes':notes.get('1.0','end').strip()}
+                end_time=parse_clock(end_var.get())
+                if old['duration']==0 and end_time==new['start']: new['duration']=0
+                elif end_time<=new['start']: raise ValueError('结束时间必须晚于开始时间。')
+                else: new['duration']=end_time-new['start']
                 if old['duration']==0 and new['duration']==0: validate(dict(new,duration=1))
                 else: validate(new)
             except (ValueError,TypeError) as ex: messagebox.showerror('请检查输入',str(ex),parent=win); return
@@ -537,86 +557,87 @@ class App(tk.Tk):
     def submit(self):
         text=self.input.get('1.0','end').strip(); cfg=settings()
         if not text: return
-        self.add.config(state='disabled'); self.status.config(text='正在解析与规划…')
+        self.add.config(state='disabled'); self.status.config(text='正在识别活动…')
         def work():
             try:
                 parsed=parse(text,cfg,multiple=True); events=parsed.get('events')
-                if not isinstance(events,list) or not 1<=len(events)<=15: raise ValueError('未能识别活动列表，或活动超过15项，请调整输入。')
-                for index,e in enumerate(events):
-                    if not isinstance(e,dict): raise ValueError('活动信息格式有误，请重新输入。')
-                    name=e.get('title') or f'第{index+1}项活动'
-                    if not e.get('day'): e['day']=self.ask_text('补充日期',f'{name} 的日期是什么？请输入 YYYY-MM-DD。')
-                    if not e.get('location'): e['location']=self.ask_text('补充地点',f'{name} 在哪里？')
-                    if not e.get('title'): e['title']='返回 '+e['location'] if e.get('is_return') else '活动 · '+e['location']
-                    if e.get('deadline_missing') and e.get('latest_end') is None:
-                        e['latest_end']=parse_clock(self.ask_text('补充截止时间',f'{name} 必须在几点前到达或结束？请输入 24 小时制，例如 18:00。'))
-                    if e.get('is_return'): e['duration']=0
-                    elif e.get('duration') is None:
-                        raw=self.ask_text('补充耗时',f'{name} 大约需要多少分钟？请输入整数。')
-                        try: e['duration']=int(raw)
-                        except ValueError: raise ValueError('耗时需要填写整数分钟。')
-                    if e.get('is_return'):
-                        temp=dict(e,duration=1); validate(temp)
-                    else: validate(e)
-                    for field in ('earliest','latest_end'):
-                        value=e.get(field)
-                        if value is not None and (isinstance(value,bool) or not isinstance(value,int) or not 0<=value<=1440): raise ValueError(f'{name} 的时间限制无效，请重新输入。')
-                    if e.get('mode_in') not in (None,'公交','步行','骑行','驾车'): raise ValueError(f'{name} 的交通方式无法识别，请重新输入。')
-                    summary=e.get('notes')
-                    if summary is None: summary=''
-                    if not isinstance(summary,str): raise ValueError(f'{name} 的备注格式无效，请重新规划。')
-                    e['notes']=summary.strip()
-                    e['location'],e['coord'],e['place_source']=self.choose_place(e['location'],cfg.get('amap_key'))
+                if not isinstance(events,list) or not 1<=len(events)<=15 or any(not isinstance(e,dict) for e in events): raise ValueError('未能识别活动列表，或活动超过15项，请调整输入。')
+                self.after(0,lambda:PlannerPanel(self,events,cfg,sys.modules[__name__]))
+            except Exception as ex:
+                msg=str(ex)
+                def fail(): self.add.config(state='normal'); self.status.config(text=''); messagebox.showerror('无法识别',msg)
+                self.after(0,fail)
+        threading.Thread(target=work,daemon=True).start()
+    def plan_prepared(self,events,cfg,panel):
+        self.status.config(text='正在计算路线…')
+        def work():
+            try:
                 snapshots={day:rows(day) for day in {e['day'] for e in events}}
                 working={day:list(items) for day,items in snapshots.items()}; planned=[]; previous_by_day={}; cache={}
                 for e in events:
                     previous=previous_by_day.get(e['day'])
-                    if previous:
-                        e['earliest']=max(e.get('earliest') or 0,previous['start']+previous['duration'])
+                    if previous: e['earliest']=max(e.get('earliest') or 0,previous['start']+previous['duration'])
                     names={x['coord']:x['location'] for x in working[e['day']]}; names[e['coord']]=e['location']
                     def route(a,b):
                         if a==b: return (0,'同一地点')
-                        explicit=e.get('mode_in') if previous and previous['coord']==a and b==e['coord'] else None
+                        explicit=e.get('mode_in') if b==e['coord'] else None
                         key=(a,b,explicit)
                         if key not in cache:
-                            if explicit: mode=explicit
+                            if explicit:
+                                minutes,source=travel(a,b,cfg.get('amap_key'),explicit); mode=explicit
                             else:
-                                options=['公交 / 地铁（含步行接驳）','步行','骑行','驾车']
-                                selected=self.ask_choice('选择出行方式',f"从 {names.get(a,a)} 到 {names.get(b,b)}，选择这段路的出行方式：",options)
-                                mode=['公交','步行','骑行','驾车'][selected]
-                            minutes,source=travel(a,b,cfg.get('amap_key'),mode); cache[key]=(minutes,mode+' · '+source)
+                                opts=[]; choices=[]
+                                for option in ('公交','步行','骑行','驾车'):
+                                    try:
+                                        mins,src=travel(a,b,cfg.get('amap_key'),option); opts.append((option,mins,src)); choices.append(f'{option} · 约 {mins} 分钟（{src}）')
+                                    except Exception: pass
+                                if not opts: raise ValueError('所有交通方式查询失败，请检查网络、密钥或地点。')
+                                idx=self.ask_choice('选择交通方案',f"从 {names.get(a,a)} 到 {names.get(b,b)}，请选择方案：",choices)
+                                mode,minutes,source=opts[idx]
+                            cache[key]=(minutes,mode+' · '+source)
                         return cache[key]
                     result=plan(e,working[e['day']],route); start,before,after,bs,src,prev,nxt=result
                     e['start']=start; e['_route']=result
                     if prev: e['notes']+=('\n' if e['notes'] else '')+f'前往方式：{bs}，约 {before} 分钟'
                     if e.get('latest_end') is not None: e['notes']+=('\n' if e['notes'] else '')+f"截止时间：{hm(e['latest_end'])}"
-                    planned.append(e)
-                    working[e['day']].append(e); working[e['day']].sort(key=lambda x:x['start']); previous_by_day[e['day']]=e
-                self.after(0,lambda:self.confirm_batch(planned,snapshots))
+                    planned.append(e); working[e['day']].append(e); working[e['day']].sort(key=lambda x:x['start']); previous_by_day[e['day']]=e
+                self.after(0,lambda:self.confirm_batch(planned,snapshots,panel))
             except Exception as ex:
-                msg=str(ex); self.after(0,lambda:messagebox.showerror('无法规划',msg))
-            finally: self.after(0,lambda:(self.add.config(state='normal'),self.status.config(text='')))
+                msg=str(ex)
+                def fail():
+                    self.status.config(text=''); panel.restore()
+                    messagebox.showerror('暂时无法安排',msg+'\n请检查截止时间、活动时长或交通方式后重试。',parent=panel)
+                self.after(0,fail)
         threading.Thread(target=work,daemon=True).start()
-    def confirm_batch(self,planned,snapshots):
-        lines=[]
-        for e in planned:
-            start,before,after,bs,src,prev,nxt=e['_route']
-            duration='抵达' if e['duration']==0 else hm(start)+' – '+hm(start+e['duration'])
-            lines.append(f"{e['day']}  {hm(start) if e['duration']==0 else duration}  {e['title']}\n  地点：{e['location']}")
-            if e.get('notes'): lines.append(f"  备注：{e['notes']}")
-            if prev: lines.append(f"  从上一项前往：{before} 分钟（{bs}）")
-            if nxt: lines.append(f"  前往下一项：{after} 分钟（{src}）")
-            if e.get('latest_end') is not None: lines.append(f"  截止时间：{hm(e['latest_end'])}")
-        dialog=tk.Toplevel(self); dialog.title('核对全部行程'); dialog.transient(self); dialog.grab_set(); dialog.geometry('680x520')
-        area=ttk.Frame(dialog,padding=16); area.pack(fill='both',expand=True)
-        textview=tk.Text(area,wrap='word'); scroll=ttk.Scrollbar(area,orient='vertical',command=textview.yview); textview.configure(yscrollcommand=scroll.set); scroll.pack(side='right',fill='y'); textview.pack(fill='both',expand=True)
-        textview.insert('1.0','\n\n'.join(lines)); textview.config(state='disabled')
-        buttons=ttk.Frame(dialog,padding=(16,0,16,16)); buttons.pack(fill='x')
+    def confirm_batch(self,planned,snapshots,panel):
+        dialog=tk.Toplevel(self); dialog.title('预览行程'); dialog.transient(self); dialog.grab_set(); dialog.geometry('760x650'); dialog.configure(bg='#f5f3f0')
+        header=tk.Frame(dialog,bg='#f5f3f0',padx=24,pady=16); header.pack(fill='x')
+        tk.Label(header,text='你的行程',bg='#f5f3f0',fg='#292725',font=('Microsoft YaHei',18,'bold')).pack(anchor='w')
+        tk.Label(header,text='核对地点、时间和路程后，一次保存全部活动。',bg='#f5f3f0',fg='#8f877f').pack(anchor='w',pady=(4,0))
+        buttons=tk.Frame(dialog,bg='#f5f3f0',padx=24,pady=12); buttons.pack(side='bottom',fill='x')
         approved={'yes':False}
         def accept(): approved['yes']=True; dialog.destroy()
-        ttk.Button(buttons,text='确认并保存',command=accept).pack(side='right'); ttk.Button(buttons,text='取消',command=dialog.destroy).pack(side='right',padx=8)
+        tk.Button(buttons,text='保存全部行程',command=accept,bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=16,pady=8).pack(side='right')
+        tk.Button(buttons,text='返回修改',command=dialog.destroy,bg='#f5f3f0',fg='#665f58',relief='flat',padx=12,pady=8).pack(side='right',padx=8)
+        area=tk.Frame(dialog,bg='#f5f3f0',padx=24); area.pack(fill='both',expand=True)
+        canvas=tk.Canvas(area,bg='#f5f3f0',highlightthickness=0); scroll=ttk.Scrollbar(area,orient='vertical',command=canvas.yview); canvas.configure(yscrollcommand=scroll.set); scroll.pack(side='right',fill='y'); canvas.pack(fill='both',expand=True)
+        content=tk.Frame(canvas,bg='#f5f3f0'); window=canvas.create_window(0,0,anchor='nw',window=content)
+        content.bind('<Configure>',lambda _:canvas.configure(scrollregion=canvas.bbox('all'))); canvas.bind('<Configure>',lambda e:canvas.itemconfigure(window,width=e.width))
+        for e in planned:
+            start,before,after,bs,src,prev,nxt=e['_route']
+            if prev:
+                tk.Label(content,text=f"↓  从 {prev['location']} 前往：{bs}，约 {before} 分钟",bg='#f5f3f0',fg=self.theme['accent'],anchor='w',wraplength=600,justify='left').pack(fill='x',pady=(2,6))
+            card=tk.Frame(content,bg='white',padx=14,pady=12,highlightbackground='#e8e4df',highlightthickness=1); card.pack(fill='x',pady=(0,8))
+            times=hm(start) if e['duration']==0 else hm(start)+' – '+hm(start+e['duration'])
+            tk.Label(card,text=e['day']+'   '+times,bg='white',fg=self.theme['accent'],font=('Microsoft YaHei',10,'bold')).pack(anchor='w')
+            tk.Label(card,text=e['title'],bg='white',fg='#292725',font=('Microsoft YaHei',12,'bold')).pack(anchor='w',pady=(4,0))
+            tk.Label(card,text='地点：'+e['location'],bg='white',fg='#77716a',anchor='w',wraplength=620,justify='left').pack(fill='x',pady=(4,0))
+            if e.get('notes'): tk.Label(card,text='备注：'+e['notes'],bg='white',fg='#928b84',anchor='w',wraplength=620,justify='left').pack(fill='x',pady=(3,0))
+            if nxt: tk.Label(content,text=f"↓  前往下一项：{src}，约 {after} 分钟",bg='#f5f3f0',fg=self.theme['accent'],anchor='w',wraplength=600,justify='left').pack(fill='x',pady=(0,5))
         self.wait_window(dialog)
-        if not approved['yes']: return
+        self.status.config(text='')
+        if not approved['yes']:
+            panel.restore(); return
         try:
             with db() as c:
                 c.row_factory=sqlite3.Row
@@ -625,7 +646,8 @@ class App(tk.Tk):
                     if current!=snapshot: raise ValueError('行程已有变化，请重新规划。')
                 for e in planned:
                     c.execute('INSERT INTO events(day,title,location,coord,start,duration,fixed,notes) VALUES(?,?,?,?,?,?,?,?)',(e['day'],e['title'],e['location'],e['coord'],e['start'],e['duration'],1,e['notes']))
-            self.day.set(planned[0]['day']); self.refresh()
-        except Exception as ex: messagebox.showerror('保存失败',str(ex))
+            panel.cancel(); self.day.set(planned[0]['day']); self.refresh()
+        except Exception as ex:
+            panel.restore(); messagebox.showerror('保存失败',str(ex),parent=panel)
 
 if __name__=='__main__': App().mainloop()
