@@ -448,7 +448,8 @@ class App(tk.Tk):
             try: grip=tk.Frame(win,bg='#dce1e9',cursor=cursor)
             except tk.TclError: grip=tk.Frame(win,bg='#dce1e9',cursor='arrow')
             grip.place(relx=x,rely=y,anchor='center',relwidth=w,relheight=h,width=10 if w==0 else 0,height=10 if h==0 else 0); grip.lift()
-            def start_resize(event): win._resize=(event.x_root,event.y_root,win.winfo_x(),win.winfo_y(),win.winfo_width(),win.winfo_height())
+            def start_resize(event):
+                win._resize=(event.x_root,event.y_root,win.winfo_x(),win.winfo_y(),win.winfo_width(),win.winfo_height())
             def resize(event):
                 if not hasattr(win,'_resize'): return
                 rx,ry,ox,oy,ow,oh=win._resize; dx=event.x_root-rx; dy=event.y_root-ry
@@ -456,8 +457,17 @@ class App(tk.Tk):
                 right=ox+ow+dx if 'e' in edge else ox+ow; bottom=oy+oh+dy if 's' in edge else oy+oh
                 if right-left<700: left=right-700 if 'w' in edge else left; right=left+700
                 if bottom-top<540: top=bottom-540 if 'n' in edge else top; bottom=top+540
-                win.geometry(f'{right-left}x{bottom-top}{left:+d}{top:+d}')
-            grip.bind('<ButtonPress-1>',start_resize); grip.bind('<B1-Motion>',resize)
+                win._pending_geometry=f'{right-left}x{bottom-top}{left:+d}{top:+d}'
+                if not getattr(win,'_resize_job',None):
+                    def apply_resize():
+                        win._resize_job=None
+                        if win.winfo_exists(): win.geometry(win._pending_geometry)
+                    win._resize_job=win.after(16,apply_resize)
+            def finish_resize(event):
+                if getattr(win,'_resize_job',None):
+                    win.after_cancel(win._resize_job); win._resize_job=None
+                    win.geometry(win._pending_geometry)
+            grip.bind('<ButtonPress-1>',start_resize); grip.bind('<B1-Motion>',resize); grip.bind('<ButtonRelease-1>',finish_resize)
             return grip
         def add_grips():
             for edge,x,y,w,h,cursor in [('n',.5,0,.98,0,'sb_v_double_arrow'),('s',.5,1,.98,0,'sb_v_double_arrow'),('w',0,.5,0,.97,'sb_h_double_arrow'),('e',1,.5,0,.97,'sb_h_double_arrow'),('nw',0,0,0,0,'sizing'),('ne',1,0,0,0,'sizing'),('sw',0,1,0,0,'sizing'),('se',1,1,0,0,'sizing')]:
@@ -484,9 +494,27 @@ class App(tk.Tk):
         date_value=tk.StringVar(value=old['day']); fields['day']=date_value
         date_entry=tk.Entry(date_row,textvariable=date_value,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
         date_entry.pack(side='left',fill='x',expand=True,ipady=7)
+        def dismiss_popup():
+            pop=getattr(win,'active_popup',None)
+            if pop is not None and pop.winfo_exists(): pop.destroy()
+            win.active_popup=None; win.popup_trigger=None
+        def outside_click(event):
+            pop=getattr(win,'active_popup',None); trigger=getattr(win,'popup_trigger',None)
+            if pop is None or not pop.winfo_exists(): return
+            widget=event.widget
+            if widget is trigger or widget is date_button or str(widget)==str(pop) or str(widget).startswith(str(pop)+'.'): return
+            dismiss_popup()
+        win.bind('<Button-1>',outside_click,add='+')
+        def place_popup(pop,trigger):
+            pop.update_idletasks()
+            x=max(0,min(trigger.winfo_rootx()-win.winfo_rootx(),win.winfo_width()-pop.winfo_reqwidth()))
+            below=trigger.winfo_rooty()-win.winfo_rooty()+trigger.winfo_height()+4
+            y=below if below+pop.winfo_reqheight()<=win.winfo_height() else max(0,trigger.winfo_rooty()-win.winfo_rooty()-pop.winfo_reqheight()-4)
+            pop.place(x=x,y=y); pop.lift(); win.active_popup=pop; win.popup_trigger=trigger
         def open_calendar(event=None):
             if getattr(win,'date_popup',None) and win.date_popup.winfo_exists():
-                win.date_popup.lift(); return
+                dismiss_popup(); return
+            dismiss_popup()
             try: selected=dt.date.fromisoformat(date_value.get().strip())
             except ValueError: selected=dt.date.today()
             month=[selected.replace(day=1)]
@@ -496,7 +524,7 @@ class App(tk.Tk):
             label=tk.Label(nav,bg='white',fg='#172b4d',font=('Microsoft YaHei',10,'bold')); label.pack(side='left',expand=True)
             days=tk.Frame(panel,bg='white'); days.pack(fill='both',expand=True,pady=(8,0))
             def close():
-                if pop.winfo_exists(): pop.destroy()
+                dismiss_popup()
             def select(day): date_value.set(day.isoformat()); close()
             for col,name in enumerate('一二三四五六日'):
                 days.grid_columnconfigure(col,weight=1,uniform='day')
@@ -520,22 +548,40 @@ class App(tk.Tk):
             calendar_actions=tk.Frame(panel,bg='white'); calendar_actions.pack(fill='x',pady=(5,0))
             tk.Button(calendar_actions,text='关闭',command=close,bg='white',fg='#626f86',relief='flat',cursor='hand2').pack(side='left')
             tk.Button(calendar_actions,text='今天',command=lambda:select(dt.date.today()),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack(side='right')
-            render(); pop.update_idletasks()
-            x=max(0,min(date_entry.winfo_rootx()-win.winfo_rootx(),win.winfo_width()-pop.winfo_reqwidth()))
-            below=date_entry.winfo_rooty()-win.winfo_rooty()+date_entry.winfo_height()+4
-            y=below if below+pop.winfo_reqheight()<=win.winfo_height() else max(0,date_entry.winfo_rooty()-win.winfo_rooty()-pop.winfo_reqheight()-4)
-            pop.place(x=x,y=y); pop.lift()
+            render(); place_popup(pop,date_entry)
         date_entry.bind('<Button-1>',open_calendar)
-        tk.Button(date_row,text='▦',command=open_calendar,bg='#f7f8fa',fg='#626f86',relief='flat',font=('Arial',13),padx=10,pady=4,cursor='hand2').pack(side='left',padx=(4,0))
+        date_button=tk.Button(date_row,text='▦',command=open_calendar,bg='#f7f8fa',fg='#626f86',relief='flat',font=('Arial',13),padx=10,pady=4,cursor='hand2'); date_button.pack(side='left',padx=(4,0))
         caption(detail,'地点'); input_field(detail,'location',old['location'])
         time_row=tk.Frame(detail,bg='white'); time_row.pack(fill='x')
         left=tk.Frame(time_row,bg='white'); left.pack(side='left',fill='x',expand=True,padx=(0,8))
         right=tk.Frame(time_row,bg='white'); right.pack(side='left',fill='x',expand=True,padx=(8,0))
-        time_options=[f'{hour:02d}:{minute:02d}' for hour in range(24) for minute in range(60)]
         def time_picker(parent,value):
             var=tk.StringVar(value=value)
-            selector=ttk.Combobox(parent,textvariable=var,values=time_options,width=12,height=10)
-            selector.pack(fill='x',ipady=6,pady=(0,13))
+            selector=tk.Entry(parent,textvariable=var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
+            selector.pack(fill='x',ipady=7,pady=(0,13))
+            def open_times(event=None):
+                if getattr(win,'popup_trigger',None) is selector and getattr(win,'active_popup',None) and win.active_popup.winfo_exists(): return
+                dismiss_popup()
+                pop=tk.Frame(win,bg='white',padx=10,pady=8,highlightbackground='#d5dbe5',highlightthickness=1)
+                tk.Label(pop,text='选择时间',bg='white',fg='#172b4d',font=('Microsoft YaHei',9,'bold')).pack(anchor='w',pady=(0,5))
+                lists=tk.Frame(pop,bg='white'); lists.pack()
+                hour_list=tk.Listbox(lists,height=7,width=5,exportselection=False,relief='flat',bg='#f7f8fa',activestyle='none')
+                minute_list=tk.Listbox(lists,height=7,width=5,exportselection=False,relief='flat',bg='#f7f8fa',activestyle='none')
+                hour_list.pack(side='left',padx=(0,8)); minute_list.pack(side='left')
+                for n in range(24): hour_list.insert('end',f'{n:02d}')
+                for n in range(60): minute_list.insert('end',f'{n:02d}')
+                try: current=parse_clock(var.get()); hour,minute=divmod(current,60)
+                except ValueError: hour,minute=0,0
+                hour_list.selection_set(hour); minute_list.selection_set(minute); hour_list.see(hour); minute_list.see(minute)
+                def changed(event):
+                    h=hour_list.curselection(); m=minute_list.curselection()
+                    if h and m: var.set(f'{h[0]:02d}:{m[0]:02d}')
+                hour_list.bind('<<ListboxSelect>>',changed); minute_list.bind('<<ListboxSelect>>',changed)
+                def wheel(event,box): box.yview_scroll(int(-event.delta/120),'units'); return 'break'
+                for box in (hour_list,minute_list): box.bind('<MouseWheel>',lambda e,b=box:wheel(e,b))
+                tk.Button(pop,text='完成',command=dismiss_popup,bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack(anchor='e',pady=(5,0))
+                place_popup(pop,selector)
+            selector.bind('<Button-1>',open_times)
             return var
         caption(left,'开始时间'); fields['start']=time_picker(left,hm(old['start']))
         caption(right,'结束时间'); end_var=time_picker(right,hm(old['start']+old['duration']))
