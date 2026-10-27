@@ -489,8 +489,11 @@ class App(tk.Tk):
             var=tk.StringVar(value=value); fields[key]=var
             entry=tk.Entry(parent,textvariable=var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
             entry.pack(fill='x',ipady=7,pady=(0,13)); return entry
-        caption(detail,'日期')
-        date_row=tk.Frame(detail,bg='white'); date_row.pack(fill='x',pady=(0,13))
+        info_row=tk.Frame(detail,bg='white'); info_row.pack(fill='x')
+        date_column=tk.Frame(info_row,bg='white'); date_column.pack(side='left',fill='x',expand=True,padx=(0,8))
+        location_column=tk.Frame(info_row,bg='white'); location_column.pack(side='left',fill='x',expand=True,padx=(8,0))
+        caption(date_column,'日期')
+        date_row=tk.Frame(date_column,bg='white'); date_row.pack(fill='x',pady=(0,13))
         date_value=tk.StringVar(value=old['day']); fields['day']=date_value
         date_entry=tk.Entry(date_row,textvariable=date_value,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
         date_entry.pack(side='left',fill='x',expand=True,ipady=7)
@@ -502,7 +505,7 @@ class App(tk.Tk):
             pop=getattr(win,'active_popup',None); trigger=getattr(win,'popup_trigger',None)
             if pop is None or not pop.winfo_exists(): return
             widget=event.widget
-            if widget is trigger or widget is date_button or str(widget)==str(pop) or str(widget).startswith(str(pop)+'.'): return
+            if widget is trigger or str(widget)==str(pop) or str(widget).startswith(str(pop)+'.'): return
             dismiss_popup()
         win.bind('<Button-1>',outside_click,add='+')
         def place_popup(pop,trigger):
@@ -550,8 +553,7 @@ class App(tk.Tk):
             tk.Button(calendar_actions,text='今天',command=lambda:select(dt.date.today()),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack(side='right')
             render(); place_popup(pop,date_entry)
         date_entry.bind('<Button-1>',open_calendar)
-        date_button=tk.Button(date_row,text='▦',command=open_calendar,bg='#f7f8fa',fg='#626f86',relief='flat',font=('Arial',13),padx=10,pady=4,cursor='hand2'); date_button.pack(side='left',padx=(4,0))
-        caption(detail,'地点'); input_field(detail,'location',old['location'])
+        caption(location_column,'地点'); input_field(location_column,'location',old['location'])
         time_row=tk.Frame(detail,bg='white'); time_row.pack(fill='x')
         left=tk.Frame(time_row,bg='white'); left.pack(side='left',fill='x',expand=True,padx=(0,8))
         right=tk.Frame(time_row,bg='white'); right.pack(side='left',fill='x',expand=True,padx=(8,0))
