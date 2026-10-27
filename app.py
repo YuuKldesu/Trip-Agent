@@ -427,10 +427,21 @@ class App(tk.Tk):
         if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
         old=dict(row)
         win=tk.Toplevel(self); win.title('行程详情'); win.transient(self); win.grab_set(); win.geometry('900x690'); win.minsize(780,620); win.configure(bg='#f7f8fa')
+        # Hide the native title bar and retain an in-window close button and drag handle.
+        win.overrideredirect(True)
+        win.update_idletasks()
+        wx=max(0,self.winfo_rootx()+(self.winfo_width()-900)//2); wy=max(0,self.winfo_rooty()+(self.winfo_height()-690)//2)
+        win.geometry(f'900x690+{wx}+{wy}')
         header=tk.Frame(win,bg='white',padx=28,pady=15,highlightbackground='#e4e7ec',highlightthickness=1); header.pack(fill='x')
+        def begin_drag(event): win._drag_x=event.x_root-win.winfo_x(); win._drag_y=event.y_root-win.winfo_y()
+        def drag(event): win.geometry(f'+{event.x_root-win._drag_x}+{event.y_root-win._drag_y}')
+        header.bind('<ButtonPress-1>',begin_drag); header.bind('<B1-Motion>',drag)
+        win.bind('<Escape>',lambda event:win.destroy())
         heading=tk.Frame(header,bg='white'); heading.pack(fill='x',pady=(7,0))
+        heading.bind('<ButtonPress-1>',begin_drag); heading.bind('<B1-Motion>',drag)
         title=tk.StringVar(value=old['title'])
         tk.Entry(heading,textvariable=title,bg='white',fg='#172b4d',font=('Microsoft YaHei',18,'bold'),relief='flat',highlightthickness=0).pack(side='left',fill='x',expand=True)
+        tk.Button(heading,text='✕',command=win.destroy,bg='white',fg='#626f86',activebackground='#edf0f5',relief='flat',font=('Arial',13),cursor='hand2',padx=8).pack(side='right',padx=(12,0))
         tk.Label(heading,text='已完成' if old.get('completed') else '待进行',bg='#e9f2ff' if not old.get('completed') else '#e6f4ea',fg='#2458a6' if not old.get('completed') else '#28784a',font=('Microsoft YaHei',9,'bold'),padx=10,pady=5).pack(side='right')
         footer=tk.Frame(win,bg='white',padx=28,pady=13,highlightbackground='#e4e7ec',highlightthickness=1); footer.pack(side='bottom',fill='x')
         status=tk.Label(footer,text='',bg='white',fg='#6b778c',font=('Microsoft YaHei',9)); status.pack(side='left')
@@ -444,7 +455,50 @@ class App(tk.Tk):
             var=tk.StringVar(value=value); fields[key]=var
             entry=tk.Entry(parent,textvariable=var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
             entry.pack(fill='x',ipady=7,pady=(0,13)); return entry
-        caption(detail,'日期'); input_field(detail,'day',old['day'])
+        caption(detail,'日期')
+        date_row=tk.Frame(detail,bg='white'); date_row.pack(fill='x',pady=(0,13))
+        date_value=tk.StringVar(value=old['day']); fields['day']=date_value
+        date_entry=tk.Entry(date_row,textvariable=date_value,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10))
+        date_entry.pack(side='left',fill='x',expand=True,ipady=7)
+        def open_calendar(event=None):
+            if getattr(win,'date_popup',None) and win.date_popup.winfo_exists():
+                win.date_popup.lift(); return
+            try: selected=dt.date.fromisoformat(date_value.get().strip())
+            except ValueError: selected=dt.date.today()
+            month=[selected.replace(day=1)]
+            pop=tk.Toplevel(win); win.date_popup=pop; pop.withdraw(); pop.overrideredirect(True); pop.transient(win)
+            panel=tk.Frame(pop,bg='white',padx=12,pady=10,highlightbackground='#d5dbe5',highlightthickness=1); panel.pack(fill='both',expand=True)
+            nav=tk.Frame(panel,bg='white'); nav.pack(fill='x')
+            label=tk.Label(nav,bg='white',fg='#172b4d',font=('Microsoft YaHei',10,'bold')); label.pack(side='left',expand=True)
+            days=tk.Frame(panel,bg='white'); days.pack(fill='both',expand=True,pady=(8,0))
+            def close():
+                if pop.winfo_exists(): pop.grab_release(); pop.destroy()
+                if win.winfo_exists(): win.grab_set()
+            def select(day): date_value.set(day.isoformat()); close()
+            def render():
+                for child in days.winfo_children(): child.destroy()
+                current=month[0]; label.config(text=f'{current.year} 年 {current.month} 月')
+                for col,name in enumerate('一二三四五六日'):
+                    days.grid_columnconfigure(col,weight=1,uniform='day')
+                    tk.Label(days,text=name,bg='white',fg='#8993a4',font=('Microsoft YaHei',9)).grid(row=0,column=col,sticky='ew',pady=3)
+                for r,week in enumerate(calendar.Calendar(firstweekday=0).monthdatescalendar(current.year,current.month),1):
+                    for c,day in enumerate(week):
+                        chosen=day.isoformat()==date_value.get().strip()
+                        button=tk.Button(days,text=str(day.day),command=lambda d=day:select(d),bg=self.theme['accent'] if chosen else 'white',fg='white' if chosen else ('#172b4d' if day.month==current.month else '#aeb6c3'),activebackground='#edf0f5',relief='flat',borderwidth=0,font=('Arial',10),cursor='hand2',width=3,pady=4)
+                        button.grid(row=r,column=c,sticky='ew',padx=1,pady=1)
+            def shift_month(step):
+                y,m=divmod(month[0].year*12+month[0].month-1+step,12)
+                if 1<=y<=9999: month[0]=dt.date(y,m+1,1); render()
+            tk.Button(nav,text='‹',command=lambda:shift_month(-1),bg='white',fg='#44546f',relief='flat',font=('Arial',15),cursor='hand2').pack(side='left')
+            tk.Button(nav,text='›',command=lambda:shift_month(1),bg='white',fg='#44546f',relief='flat',font=('Arial',15),cursor='hand2').pack(side='right')
+            tk.Button(panel,text='今天',command=lambda:select(dt.date.today()),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack(anchor='e',pady=(5,0))
+            render(); pop.update_idletasks()
+            x=min(date_entry.winfo_rootx(),max(0,pop.winfo_screenwidth()-pop.winfo_reqwidth()))
+            below=date_entry.winfo_rooty()+date_entry.winfo_height()+4
+            y=below if below+pop.winfo_reqheight()<=pop.winfo_screenheight() else max(0,date_entry.winfo_rooty()-pop.winfo_reqheight()-4)
+            pop.geometry(f'+{x}+{y}'); pop.deiconify(); pop.grab_set(); pop.bind('<Escape>',lambda e:close()); pop.focus_set()
+        date_entry.bind('<Button-1>',open_calendar)
+        tk.Button(date_row,text='▦',command=open_calendar,bg='#f7f8fa',fg='#626f86',relief='flat',font=('Arial',13),padx=10,pady=4,cursor='hand2').pack(side='left',padx=(4,0))
         caption(detail,'地点'); input_field(detail,'location',old['location'])
         time_row=tk.Frame(detail,bg='white'); time_row.pack(fill='x')
         left=tk.Frame(time_row,bg='white'); left.pack(side='left',fill='x',expand=True,padx=(0,8))
