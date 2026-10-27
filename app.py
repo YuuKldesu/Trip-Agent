@@ -428,12 +428,41 @@ class App(tk.Tk):
             row=c.execute('SELECT * FROM events WHERE id=?',(event_id,)).fetchone()
         if row is None: messagebox.showerror('无法编辑','这项行程已不存在。'); self.refresh(); return
         old=dict(row)
-        # Use an embedded editor instead of a separate grabbed window.
-        # This keeps input under the main window manager and avoids focus traps.
-        win=tk.Frame(self,bg='#f7f8fa',highlightbackground='#d5dbe5',highlightthickness=1); self.editor_panel=win
-        win.place(relx=0.5,rely=0.5,anchor='center',relwidth=0.94,relheight=0.94); win.lift()
+        # A standalone borderless editor with explicit move/resize controls.
+        # No modal grab or forced focus: the window must never capture all input.
+        win=tk.Toplevel(self); self.editor_panel=win
+        win.withdraw(); win.overrideredirect(True); win.configure(bg='#f7f8fa',highlightbackground='#d5dbe5',highlightthickness=1)
+        self.update_idletasks()
+        width=min(900,max(700,self.winfo_screenwidth()-40)); height=min(690,max(540,self.winfo_screenheight()-80))
+        x=max(0,(self.winfo_screenwidth()-width)//2); y=max(0,(self.winfo_screenheight()-height)//2)
+        win.geometry(f'{width}x{height}+{x}+{y}')
         header=tk.Frame(win,bg='white',padx=28,pady=15,highlightbackground='#e4e7ec',highlightthickness=1); header.pack(fill='x')
         heading=tk.Frame(header,bg='white'); heading.pack(fill='x',pady=(7,0))
+        def begin_move(event): win._move_offset=(event.x_root-win.winfo_x(),event.y_root-win.winfo_y())
+        def move_window(event):
+            if hasattr(win,'_move_offset'):
+                dx,dy=win._move_offset; win.geometry(f'{win.winfo_width()}x{win.winfo_height()}{event.x_root-dx:+d}{event.y_root-dy:+d}')
+        for handle in (header,heading):
+            handle.bind('<ButtonPress-1>',begin_move); handle.bind('<B1-Motion>',move_window)
+        def resize_handle(edge,x,y,w,h,cursor):
+            try: grip=tk.Frame(win,bg='#dce1e9',cursor=cursor)
+            except tk.TclError: grip=tk.Frame(win,bg='#dce1e9',cursor='arrow')
+            grip.place(relx=x,rely=y,anchor='center',relwidth=w,relheight=h,width=10 if w==0 else 0,height=10 if h==0 else 0); grip.lift()
+            def start_resize(event): win._resize=(event.x_root,event.y_root,win.winfo_x(),win.winfo_y(),win.winfo_width(),win.winfo_height())
+            def resize(event):
+                if not hasattr(win,'_resize'): return
+                rx,ry,ox,oy,ow,oh=win._resize; dx=event.x_root-rx; dy=event.y_root-ry
+                left=ox+dx if 'w' in edge else ox; top=oy+dy if 'n' in edge else oy
+                right=ox+ow+dx if 'e' in edge else ox+ow; bottom=oy+oh+dy if 's' in edge else oy+oh
+                if right-left<700: left=right-700 if 'w' in edge else left; right=left+700
+                if bottom-top<540: top=bottom-540 if 'n' in edge else top; bottom=top+540
+                win.geometry(f'{right-left}x{bottom-top}{left:+d}{top:+d}')
+            grip.bind('<ButtonPress-1>',start_resize); grip.bind('<B1-Motion>',resize)
+            return grip
+        def add_grips():
+            for edge,x,y,w,h,cursor in [('n',.5,0,.98,0,'sb_v_double_arrow'),('s',.5,1,.98,0,'sb_v_double_arrow'),('w',0,.5,0,.97,'sb_h_double_arrow'),('e',1,.5,0,.97,'sb_h_double_arrow'),('nw',0,0,0,0,'sizing'),('ne',1,0,0,0,'sizing'),('sw',0,1,0,0,'sizing'),('se',1,1,0,0,'sizing')]:
+                resize_handle(edge,x,y,w,h,cursor)
+        win.bind('<Escape>',lambda event:win.destroy())
         title=tk.StringVar(value=old['title'])
         tk.Entry(heading,textvariable=title,bg='white',fg='#172b4d',font=('Microsoft YaHei',18,'bold'),relief='flat',highlightthickness=0).pack(side='left',fill='x',expand=True)
         tk.Button(heading,text='✕',command=win.destroy,bg='white',fg='#626f86',activebackground='#edf0f5',relief='flat',font=('Arial',13),cursor='hand2',padx=8).pack(side='right',padx=(12,0))
@@ -469,17 +498,20 @@ class App(tk.Tk):
             def close():
                 if pop.winfo_exists(): pop.destroy()
             def select(day): date_value.set(day.isoformat()); close()
+            for col,name in enumerate('一二三四五六日'):
+                days.grid_columnconfigure(col,weight=1,uniform='day')
+                tk.Label(days,text=name,bg='white',fg='#8993a4',font=('Microsoft YaHei',9)).grid(row=0,column=col,sticky='ew',pady=3)
+            day_buttons=[]
+            for r in range(6):
+                for c in range(7):
+                    button=tk.Button(days,bg='white',activebackground='#edf0f5',relief='flat',borderwidth=0,font=('Arial',10),cursor='hand2',width=3,pady=4)
+                    button.grid(row=r+1,column=c,sticky='ew',padx=1,pady=1); day_buttons.append(button)
             def render():
-                for child in days.winfo_children(): child.destroy()
                 current=month[0]; label.config(text=f'{current.year} 年 {current.month} 月')
-                for col,name in enumerate('一二三四五六日'):
-                    days.grid_columnconfigure(col,weight=1,uniform='day')
-                    tk.Label(days,text=name,bg='white',fg='#8993a4',font=('Microsoft YaHei',9)).grid(row=0,column=col,sticky='ew',pady=3)
-                for r,week in enumerate(calendar.Calendar(firstweekday=0).monthdatescalendar(current.year,current.month),1):
-                    for c,day in enumerate(week):
-                        chosen=day.isoformat()==date_value.get().strip()
-                        button=tk.Button(days,text=str(day.day),command=lambda d=day:select(d),bg=self.theme['accent'] if chosen else 'white',fg='white' if chosen else ('#172b4d' if day.month==current.month else '#aeb6c3'),activebackground='#edf0f5',relief='flat',borderwidth=0,font=('Arial',10),cursor='hand2',width=3,pady=4)
-                        button.grid(row=r,column=c,sticky='ew',padx=1,pady=1)
+                first=current-dt.timedelta(days=current.weekday())
+                for i,button in enumerate(day_buttons):
+                    day=first+dt.timedelta(days=i); chosen=day.isoformat()==date_value.get().strip()
+                    button.config(text=str(day.day),command=lambda d=day:select(d),bg=self.theme['accent'] if chosen else 'white',fg='white' if chosen else ('#172b4d' if day.month==current.month else '#aeb6c3'))
             def shift_month(step):
                 y,m=divmod(month[0].year*12+month[0].month-1+step,12)
                 if 1<=y<=9999: month[0]=dt.date(y,m+1,1); render()
@@ -499,9 +531,14 @@ class App(tk.Tk):
         time_row=tk.Frame(detail,bg='white'); time_row.pack(fill='x')
         left=tk.Frame(time_row,bg='white'); left.pack(side='left',fill='x',expand=True,padx=(0,8))
         right=tk.Frame(time_row,bg='white'); right.pack(side='left',fill='x',expand=True,padx=(8,0))
-        caption(left,'开始时间'); input_field(left,'start',hm(old['start']))
-        caption(right,'结束时间'); end_var=tk.StringVar(value=hm(old['start']+old['duration']))
-        tk.Entry(right,textvariable=end_var,bg='#f7f8fa',fg='#172b4d',relief='flat',highlightbackground='#d5dbe5',highlightcolor=self.theme['accent'],highlightthickness=1,font=('Microsoft YaHei',10)).pack(fill='x',ipady=7,pady=(0,13))
+        time_options=[f'{hour:02d}:{minute:02d}' for hour in range(24) for minute in range(60)]
+        def time_picker(parent,value):
+            var=tk.StringVar(value=value)
+            selector=ttk.Combobox(parent,textvariable=var,values=time_options,width=12,height=10)
+            selector.pack(fill='x',ipady=6,pady=(0,13))
+            return var
+        caption(left,'开始时间'); fields['start']=time_picker(left,hm(old['start']))
+        caption(right,'结束时间'); end_var=time_picker(right,hm(old['start']+old['duration']))
         fields['duration']=tk.StringVar(value=str(old['duration']))
         duration_label=tk.Label(detail,text=f"预计耗时  ·  {old['duration']} 分钟",bg='white',fg='#5c6b82',font=('Microsoft YaHei',9),anchor='w'); duration_label.pack(fill='x',pady=(0,14))
         def sync_duration(*_):
@@ -529,7 +566,7 @@ class App(tk.Tk):
                 else: new['duration']=end_time-new['start']
                 if old['duration']==0 and new['duration']==0: validate(dict(new,duration=1))
                 else: validate(new)
-            except (ValueError,TypeError) as ex: messagebox.showerror('请检查输入',str(ex),parent=self); return
+            except (ValueError,TypeError) as ex: messagebox.showerror('请检查输入',str(ex),parent=win); return
             mode_value=mode.get(); cfg=settings(); save.config(state='disabled'); status.config(text='正在检查地点和行程冲突…')
             def worker():
                 try:
@@ -543,7 +580,7 @@ class App(tk.Tk):
                         msg=f"活动：{new['title']}\n日期：{new['day']}  {hm(start)} – {hm(start+new['duration'])}\n地点：{new['location']}"
                         if prev: msg+=f"\n上一项到此处：{before} 分钟（{bs}）"
                         if nxt: msg+=f"\n此处到下一项：{after} 分钟（{src}）"
-                        if not messagebox.askyesno('确认修改',msg+'\n\n保存修改？',parent=self): save.config(state='normal'); status.config(text=''); return
+                        if not messagebox.askyesno('确认修改',msg+'\n\n保存修改？',parent=win): save.config(state='normal'); status.config(text=''); return
                         try:
                             with db() as c:
                                 c.row_factory=sqlite3.Row
@@ -552,16 +589,17 @@ class App(tk.Tk):
                                 if latest is None or dict(latest)!=old or current!=current_snapshot: raise ValueError('相关行程已发生变化，请重新打开编辑。')
                                 c.execute('UPDATE events SET day=?,title=?,location=?,coord=?,start=?,duration=?,fixed=?,notes=? WHERE id=?',(new['day'],new['title'],new['location'],new['coord'],new['start'],new['duration'],1,new['notes'],event_id))
                             self.day.set(new['day']); win.destroy(); self.refresh()
-                        except Exception as ex: messagebox.showerror('保存失败',str(ex),parent=self); save.config(state='normal'); status.config(text='')
+                        except Exception as ex: messagebox.showerror('保存失败',str(ex),parent=win); save.config(state='normal'); status.config(text='')
                     current_snapshot=current
                     self.after(0,finish)
                 except Exception as ex:
                     msg=str(ex)
                     def fail():
-                        if win.winfo_exists(): messagebox.showerror('无法保存',msg,parent=self); save.config(state='normal'); status.config(text='')
+                        if win.winfo_exists(): messagebox.showerror('无法保存',msg,parent=win); save.config(state='normal'); status.config(text='')
                     self.after(0,fail)
             threading.Thread(target=worker,daemon=True).start()
         save.config(command=submit_edit)
+        add_grips(); win.deiconify(); win.lift()
     def delete(self,event_id):
         if messagebox.askyesno('删除行程','确定删除这项行程吗？',parent=self):
             with db() as c: c.execute('DELETE FROM events WHERE id=?',(event_id,))
