@@ -24,6 +24,7 @@ class Tests(unittest.TestCase):
                 events=app.rows('2026-10-27')
                 self.assertEqual(events[0]['title'],'参观')
                 self.assertEqual(events[0]['notes'],'')
+                self.assertEqual(events[0]['completed'],0)
         finally: app.DB=original
     def test_short_gap_boundaries(self):
         first={'day':'2026-10-27','start':600,'duration':60}
@@ -121,6 +122,17 @@ class Tests(unittest.TestCase):
         self.assertEqual([e['notes'] for e in result['events']],['与朋友一起游览','拍照'])
         body=json.loads(mock.call_args.args[0].data)
         self.assertIn('不虚构',body['messages'][0]['content'])
+    def test_all_dates_and_completion_persist(self):
+        original=app.DB
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                app.DB=Path(folder)/'test.sqlite3'
+                with app.db() as c:
+                    c.executemany("INSERT INTO events(day,title,location,coord,start,duration) VALUES(?,?,?,?,?,?)",[('2026-11-01','第二项','夫子庙','118,32',600,30),('2026-10-31','第一项','夫子庙','118,32',540,30)])
+                entries=app.all_rows(); self.assertEqual([e['title'] for e in entries],['第一项','第二项'])
+                app.update_completed(entries[0]['id'],True); self.assertEqual(app.all_rows()[0]['completed'],1)
+                app.update_completed(entries[0]['id'],False); self.assertEqual(app.all_rows()[0]['completed'],0)
+        finally: app.DB=original
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

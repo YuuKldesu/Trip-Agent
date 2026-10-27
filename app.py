@@ -23,6 +23,7 @@ def db():
     con.execute('CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, day TEXT NOT NULL, title TEXT NOT NULL, location TEXT NOT NULL, coord TEXT NOT NULL, start INTEGER NOT NULL, duration INTEGER NOT NULL, fixed INTEGER NOT NULL DEFAULT 0)')
     columns = {r[1] for r in con.execute('PRAGMA table_info(events)')}
     if 'notes' not in columns: con.execute("ALTER TABLE events ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+    if 'completed' not in columns: con.execute('ALTER TABLE events ADD COLUMN completed INTEGER NOT NULL DEFAULT 0')
     return con
 
 def settings():
@@ -225,31 +226,40 @@ def rows(day):
         c.row_factory=sqlite3.Row
         return [dict(r) for r in c.execute('SELECT * FROM events WHERE day=? ORDER BY start,id',(day,))]
 
+def all_rows():
+    with db() as c:
+        c.row_factory=sqlite3.Row
+        return [dict(r) for r in c.execute('SELECT * FROM events ORDER BY day,start,id')]
+
+def update_completed(event_id,completed):
+    with db() as c: c.execute('UPDATE events SET completed=? WHERE id=?',(int(bool(completed)),event_id))
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__(); self.title('南京行程 Agent'); self.geometry('1000x700'); self.minsize(800,580)
         self.theme=theme_for(settings().get('theme'))
         self.configure(bg='#f5f3f0')
         self.option_add('*Font', ('Microsoft YaHei', 10))
-        self.main=tk.Frame(self,bg='#f5f3f0',padx=36,pady=26); self.main.pack(fill='both',expand=True)
+        self.main=tk.Frame(self,bg='#f5f3f0',padx=30,pady=14); self.main.pack(fill='both',expand=True)
         top=tk.Frame(self.main,bg='#f5f3f0'); top.pack(fill='x')
         tk.Label(top,text='NANJING  /  PLANNER',bg='#f5f3f0',fg='#a09a91',font=('Arial',9,'bold')).pack(side='left')
         tk.Button(top,text='设置  ⚙',command=self.config_dialog,bg='#f5f3f0',fg='#56514d',relief='flat',cursor='hand2').pack(side='right')
-        title=tk.Frame(self.main,bg='#f5f3f0'); title.pack(fill='x',pady=(20,14))
+        title=tk.Frame(self.main,bg='#f5f3f0'); title.pack(fill='x',pady=(8,8))
         tk.Label(title,text='我的日程',font=('Microsoft YaHei',25,'bold'),bg='#f5f3f0',fg='#252525').pack(side='left')
         tk.Label(title,text='把时间留给值得的事',font=('Microsoft YaHei',10),bg='#f5f3f0',fg='#a09a91').pack(side='left',padx=16,pady=(11,0))
-        composer=tk.Frame(self.main,bg='white',padx=18,pady=14,highlightbackground='#e9e5df',highlightthickness=1); composer.pack(fill='x')
+        composer=tk.Frame(self.main,bg='white',padx=14,pady=7,highlightbackground='#e9e5df',highlightthickness=1); composer.pack(fill='x')
         self.composer_label=tk.Label(composer,text='✦  告诉我你的计划',bg='white',fg=self.theme['accent'],font=('Microsoft YaHei',11,'bold')); self.composer_label.pack(anchor='w')
-        self.input=tk.Text(composer,height=2,font=('Microsoft YaHei',11),wrap='word',relief='flat',bg='white',fg='#36322f',insertbackground=self.theme['accent']); self.input.pack(fill='x',pady=(10,5)); self.input.insert('1.0','明天在南京博物院参观，约2小时')
+        self.input=tk.Text(composer,height=2,font=('Microsoft YaHei',11),wrap='word',relief='flat',bg='white',fg='#36322f',insertbackground=self.theme['accent']); self.input.pack(fill='x',pady=(4,2)); self.input.insert('1.0','明天在南京博物院参观，约2小时')
         bar=tk.Frame(composer,bg='white'); bar.pack(fill='x')
-        self.add=tk.Button(bar,text='  规划行程  →  ',command=self.submit,bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=12,pady=7,cursor='hand2'); self.add.pack(side='right'); self.status=tk.Label(bar,text='',bg='white',fg='#918a82'); self.status.pack(side='right',padx=10)
+        self.add=tk.Button(bar,text='  规划行程  →  ',command=self.submit,bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=10,pady=4,cursor='hand2'); self.add.pack(side='right'); self.status=tk.Label(bar,text='',bg='white',fg='#918a82'); self.status.pack(side='right',padx=10)
         row=tk.Frame(self.main,bg='#f5f3f0'); row.pack(fill='x',pady=(16,8))
         tk.Label(row,text='行程看板',font=('Microsoft YaHei',15,'bold'),bg='#f5f3f0',fg='#292725').pack(side='left')
         self.day=tk.StringVar(value=dt.date.today().isoformat())
         self.month_label=tk.Label(row,bg='#f5f3f0',fg='#514a44',font=('Microsoft YaHei',11,'bold')); self.month_label.pack(side='left',padx=(20,12))
-        tk.Button(row,text='‹',command=lambda:self.shift(-1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
-        tk.Button(row,text='›',command=lambda:self.shift(1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
-        tk.Button(row,text='今天',command=self.today,bg='white',fg='#68605a',relief='flat',padx=12,pady=4,cursor='hand2').pack(side='left',padx=8)
+        self.month_controls=tk.Frame(row,bg='#f5f3f0'); self.month_controls.pack(side='left')
+        tk.Button(self.month_controls,text='‹',command=lambda:self.shift(-1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
+        tk.Button(self.month_controls,text='›',command=lambda:self.shift(1),bg='#f5f3f0',relief='flat',font=('Arial',17),fg='#7d756c',cursor='hand2').pack(side='left')
+        tk.Button(self.month_controls,text='今天',command=self.today,bg='white',fg='#68605a',relief='flat',padx=12,pady=4,cursor='hand2').pack(side='left',padx=8)
         self.view=tk.StringVar(value='month')
         self.list_button=tk.Button(row,text='列表',command=lambda:self.set_view('list'),bg='white',fg='#68605a',relief='flat',padx=10,pady=5,cursor='hand2'); self.list_button.pack(side='right',padx=(3,0))
         self.month_button=tk.Button(row,text='月历',command=lambda:self.set_view('month'),bg='white',fg='#68605a',relief='flat',padx=10,pady=5,cursor='hand2'); self.month_button.pack(side='right')
@@ -279,7 +289,8 @@ class App(tk.Tk):
         self.month_button.config(bg=self.theme['accent'] if self.view.get()=='month' else 'white',fg='white' if self.view.get()=='month' else '#68605a')
         self.list_button.config(bg=self.theme['accent'] if self.view.get()=='list' else 'white',fg='white' if self.view.get()=='list' else '#68605a')
         if self.view.get()=='list':
-            self.refresh_list(); return
+            self.month_controls.pack_forget(); self.refresh_list(); return
+        if not self.month_controls.winfo_ismapped(): self.month_controls.pack(side='left',after=self.month_label)
         date=dt.date.fromisoformat(self.day.get()); weeks=calendar.Calendar(firstweekday=0).monthdatescalendar(date.year,date.month)
         first,last=weeks[0][0],weeks[-1][-1]
         self.month_label.config(text=f'{date.year} 年 {date.month} 月')
@@ -312,28 +323,20 @@ class App(tk.Tk):
                         label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=width)
                         label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label)
                     add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),self.theme['accent'],('Arial',9,'bold'))
-                    add_label(e['title'],'#302c29',('Microsoft YaHei',10,'bold'))
-                    add_label('地点：'+e['location'],'#77716a',('Microsoft YaHei',9))
-                    add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
-                    if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
-                    actions=tk.Frame(card,bg='white'); actions.pack(anchor='e')
-                    tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
-                    tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
+                    add_label(('✓  ' if e['completed'] else '')+e['title'],'#aaa39c' if e['completed'] else '#302c29',('Microsoft YaHei',10,'overstrike') if e['completed'] else ('Microsoft YaHei',10,'bold'))
+                    add_label(e['location'],'#aaa39c' if e['completed'] else '#77716a',('Microsoft YaHei',9))
                     self.bind_card(card,e['id'])
         self.canvas.yview_moveto(0)
     def refresh_list(self):
-        date=dt.date.fromisoformat(self.day.get()); first=date.replace(day=1); last=date.replace(day=calendar.monthrange(date.year,date.month)[1])
-        self.month_label.config(text=f'{date.year} 年 {date.month} 月')
+        self.month_label.config(text='全部行程')
         for widget in self.gridframe.winfo_children(): widget.destroy()
         for widget in self.week_header.winfo_children(): widget.destroy()
         for row in range(6): self.gridframe.grid_rowconfigure(row,weight=0,minsize=0)
         self.wrapping_labels=[]
-        with db() as c:
-            c.row_factory=sqlite3.Row
-            events=[dict(r) for r in c.execute('SELECT * FROM events WHERE day BETWEEN ? AND ? ORDER BY day,start,id',(first.isoformat(),last.isoformat()))]
+        events=all_rows()
         wrapper=tk.Frame(self.gridframe,bg='#f5f3f0',padx=8,pady=8); wrapper.grid(row=0,column=0,columnspan=7,sticky='nsew')
         if not events:
-            tk.Label(wrapper,text='这个月还没有行程',bg='#f5f3f0',fg='#a39a90',font=('Microsoft YaHei',11)).pack(anchor='w',pady=30)
+            tk.Label(wrapper,text='还没有行程',bg='#f5f3f0',fg='#a39a90',font=('Microsoft YaHei',11)).pack(anchor='w',pady=30)
         current_day=None; previous=None
         for e in events:
             if e['day']!=current_day:
@@ -354,16 +357,22 @@ class App(tk.Tk):
             tk.Label(timebox,text=str(e['duration'])+' 分钟',bg='#ebeef0',fg='#8a8d90',font=('Microsoft YaHei',9)).pack(pady=3)
             tk.Label(timebox,text=hm(e['start']+e['duration']),bg='#ebeef0',fg='#292725',font=('Arial',12,'bold')).pack()
             card=tk.Frame(row,bg='white',padx=15,pady=10,highlightbackground='#e8e4df',highlightthickness=1); card.pack(side='left',fill='both',expand=True)
+            mark=tk.Button(card,text='●' if e['completed'] else '○',command=lambda event_id=e['id'],value=e['completed']:self.set_completed(event_id,not value),bg='white',activebackground='white',fg=self.theme['accent'],activeforeground=self.theme['accent'],relief='flat',borderwidth=0,font=('Arial',19),cursor='hand2')
+            mark.pack(side='left',anchor='n',padx=(0,8))
             actions=tk.Frame(card,bg='white'); actions.pack(side='right')
             tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack()
             tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2').pack()
-            for text,fg,font in [(e['title'],'#302c29',('Microsoft YaHei',12,'bold')),('⌖  '+e['location'],'#77716a',('Microsoft YaHei',10)),('备注：'+e['notes'] if e.get('notes') else '', '#9a928b',('Microsoft YaHei',9))]:
+            for text,fg,font in [(e['title'],'#a6a09b' if e['completed'] else '#302c29',('Microsoft YaHei',12,'overstrike') if e['completed'] else ('Microsoft YaHei',12,'bold')),('⌖  '+e['location'],'#77716a',('Microsoft YaHei',10)),('备注：'+e['notes'] if e.get('notes') else '', '#9a928b',('Microsoft YaHei',9))]:
                 if text:
                     label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=max(100,self.canvas.winfo_width()-175))
                     label.pack(fill='x',anchor='w',pady=(0,4)); self.wrapping_labels.append(label)
             self.bind_card(card,e['id'])
             previous=e
         self.canvas.yview_moveto(0)
+    def set_completed(self,event_id,completed):
+        fraction=self.canvas.yview()[0]
+        update_completed(event_id,completed)
+        self.refresh(); self.after_idle(lambda:self.canvas.yview_moveto(fraction))
     def bind_card(self,widget,event_id):
         # Buttons retain their own actions; clicking the card or its text opens the editor.
         if isinstance(widget,(tk.Frame,tk.Label)):
