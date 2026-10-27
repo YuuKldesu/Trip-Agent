@@ -73,34 +73,47 @@ def fetch(url, params, stage='高德请求'):
     req = urllib.request.Request(url+'?'+urllib.parse.urlencode(params), headers={'User-Agent':'NanjingTripAgent/1.0'})
     return request_json(req,stage,timeout=12,retries=2)
 
-def geocode(place, key):
+def find_places(place,key):
     if not key:
-        for name, coord in PLACES.items():
-            if name in place or place in name: return name, coord, '示例地点坐标'
-        raise ValueError('未配置高德 Key：本地体验模式仅支持预置地点。请在设置中配置 Key。')
-    data = fetch('https://restapi.amap.com/v3/place/text', {'key':key,'keywords':place,'city':'南京','citylimit':'true','offset':10,'page':1}, '高德地点查询')
-    if data.get('status') != '1': raise ValueError('高德地点查询失败：'+str(data.get('info')))
-    pois = data.get('pois', [])
-    valid = [p for p in pois if p.get('cityname') == '南京市' and isinstance(p.get('location'),str) and p.get('location')]
-    if not valid: raise ValueError('未找到南京市内的地点，请提供更具体的地点名称。')
-    p = valid[0]
-    return p['name']+'（'+str(p.get('address') or p.get('adname') or '')+'）', p['location'], '高德地点搜索第一条结果，请核对'
+        matches=[{'name':name,'coord':coord,'note':'本地示例坐标，未核实校区或具体入口'} for name,coord in PLACES.items() if name in place or place in name]
+        if not matches: raise ValueError('未配置高德 Key：本地模式仅支持预置地点。请配置高德 Key。')
+        return matches
+    data=fetch('https://restapi.amap.com/v3/place/text',{'key':key,'keywords':place,'city':'南京','citylimit':'true','offset':25,'page':1},'高德地点查询')
+    if data.get('status')!='1': raise ValueError('高德地点查询失败：'+str(data.get('info')))
+    matches=[]
+    for p in data.get('pois',[]):
+        if p.get('cityname')!='南京市' or not isinstance(p.get('location'),str) or not p['location']: continue
+        name=p.get('name') or '未命名地点'; address=p.get('address') or p.get('adname') or ''
+        if not isinstance(address,str): address=''
+        matches.append({'name':name+('（'+address+'）' if address else ''),'coord':p['location'],'note':'高德地点搜索结果'})
+    if not matches: raise ValueError('未找到南京市内的地点，请输入更具体的地点名称。')
+    return matches
+
+def geocode(place,key):
+    candidates=find_places(place,key)
+    if len(candidates)!=1: raise ValueError('地点存在多个搜索结果，请选择具体地点。')
+    p=candidates[0]; return p['name'],p['coord'],p['note']
 
 def travel(a,b,key,mode):
     if a == b: return 0, '同一地点'
     if key:
-        kind = {'驾车':'driving','步行':'walking','公交':'transit/integrated'}[mode]
+        kind = {'驾车':'driving','步行':'walking','公交':'transit/integrated','骑行':'bicycling'}[mode]
         params = {'key':key,'origin':a,'destination':b}
         if mode == '公交': params.update(city='南京',cityd='南京')
-        data = fetch('https://restapi.amap.com/v3/direction/'+kind, params, '高德路线查询')
-        if data.get('status') != '1': raise ValueError('高德路线查询失败：'+str(data.get('info')))
-        route=data.get('route',{})
+        prefix='v4' if mode=='骑行' else 'v3'
+        data = fetch('https://restapi.amap.com/'+prefix+'/direction/'+kind, params, '高德路线查询')
+        if mode=='骑行':
+            if data.get('errcode') != 0: raise ValueError('高德骑行路线查询失败：'+str(data.get('errmsg') or data.get('info') or data.get('errcode')))
+            route=data.get('data',{})
+        else:
+            if data.get('status') != '1': raise ValueError('高德路线查询失败：'+str(data.get('info')))
+            route=data.get('route',{})
         paths=route.get('transits' if mode=='公交' else 'paths',[])
         if not paths: raise ValueError('地图未找到路线，请调整交通方式或地点。')
         return math.ceil(float(paths[0]['duration'])/60), '高德实时估算'
     x1,y1=map(float,a.split(',')); x2,y2=map(float,b.split(','))
     lat=math.radians((y1+y2)/2); km=math.hypot((x1-x2)*111*math.cos(lat),(y1-y2)*111)
-    speed={'驾车':25,'步行':4,'公交':18}[mode]
+    speed={'驾车':25,'步行':4,'公交':18,'骑行':12}[mode]
     return max(1,math.ceil(km*1.5/speed*60)+(10 if mode=='公交' else 0)), '直线距离粗估'
 
 def parse_local(text, today=None):
@@ -165,6 +178,10 @@ def plan(event, existing, travel_fn):
     duration=event['duration']; specified=event.get('start'); best=None
     for i in range(len(existing)+1):
         prev=existing[i-1] if i else None; nxt=existing[i] if i<len(existing) else None
+        # Skip gaps that cannot fit even before adding travel time.
+        base_start=max(480,prev['start']+prev['duration'] if prev else 480)
+        base_end=min(1320-duration,nxt['start']-duration if nxt else 1320-duration)
+        if base_start>base_end or (specified is not None and not base_start<=specified<=base_end): continue
         before,bs=travel_fn(prev['coord'],event['coord']) if prev else (0,'无前序行程')
         after,asrc=travel_fn(event['coord'],nxt['coord']) if nxt else (0,'无后续行程')
         earliest=max(480, prev['start']+prev['duration']+before if prev else 480)
@@ -208,7 +225,7 @@ class App(tk.Tk):
         composer=tk.Frame(self.main,bg='white',padx=18,pady=14,highlightbackground='#e9e5df',highlightthickness=1); composer.pack(fill='x')
         self.composer_label=tk.Label(composer,text='✦  告诉我你的计划',bg='white',fg=self.theme['accent'],font=('Microsoft YaHei',11,'bold')); self.composer_label.pack(anchor='w')
         self.input=tk.Text(composer,height=2,font=('Microsoft YaHei',11),wrap='word',relief='flat',bg='white',fg='#36322f',insertbackground=self.theme['accent']); self.input.pack(fill='x',pady=(10,5)); self.input.insert('1.0','明天在南京博物院参观，约2小时')
-        bar=tk.Frame(composer,bg='white'); bar.pack(fill='x'); tk.Label(bar,text='出行方式',bg='white',fg='#918a82').pack(side='left'); self.mode=tk.StringVar(value='公交'); ttk.Combobox(bar,textvariable=self.mode,values=['公交','驾车','步行'],state='readonly',width=8).pack(side='left',padx=8)
+        bar=tk.Frame(composer,bg='white'); bar.pack(fill='x')
         self.add=tk.Button(bar,text='  规划行程  →  ',command=self.submit,bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=12,pady=7,cursor='hand2'); self.add.pack(side='right'); self.status=tk.Label(bar,text='',bg='white',fg='#918a82'); self.status.pack(side='right',padx=10)
         row=tk.Frame(self.main,bg='#f5f3f0'); row.pack(fill='x',pady=(16,8))
         tk.Label(row,text='行程看板',font=('Microsoft YaHei',15,'bold'),bg='#f5f3f0',fg='#292725').pack(side='left')
@@ -350,7 +367,7 @@ class App(tk.Tk):
             ttk.Label(body,text=label).pack(anchor='w'); var=tk.StringVar(value=value); fields[key]=var
             ttk.Entry(body,textvariable=var).pack(fill='x',pady=(2,8))
         ttk.Label(body,text='备注').pack(anchor='w'); notes=tk.Text(body,height=3,wrap='word'); notes.pack(fill='x',pady=(2,8)); notes.insert('1.0',old.get('notes',''))
-        ttk.Label(body,text='校验交通方式').pack(anchor='w'); mode=tk.StringVar(value=self.mode.get()); ttk.Combobox(body,textvariable=mode,values=['公交','驾车','步行'],state='readonly',width=12).pack(anchor='w',pady=(2,8))
+        ttk.Label(body,text='校验交通方式').pack(anchor='w'); mode=tk.StringVar(value='公交'); ttk.Combobox(body,textvariable=mode,values=['公交','驾车','步行','骑行'],state='readonly',width=12).pack(anchor='w',pady=(2,8))
         status=ttk.Label(body,text=''); status.pack(anchor='w'); save=ttk.Button(body,text='检查并保存'); save.pack(anchor='e',pady=(8,0))
         def submit_edit():
             try:
@@ -361,7 +378,7 @@ class App(tk.Tk):
             def worker():
                 try:
                     if new['location']==old['location']: new['coord']=old['coord']
-                    else: new['location'],new['coord'],_=geocode(new['location'],cfg.get('amap_key'))
+                    else: new['location'],new['coord'],_=self.choose_place(new['location'],cfg.get('amap_key'))
                     current=[item for item in rows(new['day']) if item['id']!=event_id]
                     result=plan(new,current,lambda a,b:travel(a,b,cfg.get('amap_key'),mode_value))
                     def finish():
@@ -423,31 +440,72 @@ class App(tk.Tk):
             self.add.config(bg=self.theme['accent'],activebackground=self.theme['hover']); self.refresh()
             win.destroy()
         ttk.Button(frame,text='保存',command=save).grid(row=15,column=0,sticky='e',pady=(12,0))
+    def ask_choice(self,title,description,choices):
+        # Called by a worker; Tk widgets are created on the UI thread.
+        done=threading.Event(); answer={'value':None}
+        def show():
+            dialog=tk.Toplevel(self); dialog.title(title); dialog.transient(self); dialog.grab_set(); dialog.geometry('700x420')
+            frame=ttk.Frame(dialog,padding=18); frame.pack(fill='both',expand=True)
+            ttk.Label(frame,text=description,wraplength=650,justify='left').pack(anchor='w',pady=(0,10))
+            box=tk.Listbox(frame,selectmode='browse',font=('Microsoft YaHei',10),height=12,exportselection=False)
+            scrollbar=ttk.Scrollbar(frame,orient='vertical',command=box.yview); box.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side='right',fill='y'); box.pack(fill='both',expand=True)
+            for item in choices: box.insert('end',item)
+            footer=ttk.Frame(frame); footer.pack(fill='x',pady=(10,0))
+            def close(): dialog.grab_release(); dialog.destroy(); done.set()
+            def select():
+                selected=box.curselection()
+                if not selected: messagebox.showinfo('请选择','请先选择一项。',parent=dialog); return
+                answer['value']=selected[0]; close()
+            ttk.Button(footer,text='取消',command=close).pack(side='right',padx=5); ttk.Button(footer,text='确认',command=select).pack(side='right')
+            box.bind('<Double-Button-1>',lambda e:select()); dialog.protocol('WM_DELETE_WINDOW',close)
+        self.after(0,show); done.wait()
+        if answer['value'] is None: raise ValueError('已取消本次规划。')
+        return answer['value']
+    def choose_place(self,place,key):
+        options=find_places(place,key)
+        if len(options)==1 and key: p=options[0]
+        else:
+            i=self.ask_choice('选择地点',f'“{place}”可能对应多个地点，请选择确切位置；找不到时请取消并输入更具体名称。', [p['name']+'　'+p['note'] for p in options]); p=options[i]
+        return p['name'],p['coord'],p['note']
     def submit(self):
-        text=self.input.get('1.0','end').strip(); mode=self.mode.get(); cfg=settings()
+        text=self.input.get('1.0','end').strip(); cfg=settings()
         if not text: return
-        self.add.config(state='disabled'); self.status.config(text='正在解析和计算路线…')
+        self.add.config(state='disabled'); self.status.config(text='正在解析与规划…')
         def work():
             try:
-                e=parse(text,cfg); validate(e); e['notes']=text; place,coord,note=geocode(e['location'],cfg.get('amap_key')); e['coord']=coord; e['location']=place
-                existing=rows(e['day']); result=plan(e,existing,lambda a,b:travel(a,b,cfg.get('amap_key'),mode))
-                self.after(0,lambda:self.confirm(e,result,note,mode))
+                e=parse(text,cfg); validate(e); e['notes']=text
+                e['location'],e['coord'],note=self.choose_place(e['location'],cfg.get('amap_key'))
+                existing=rows(e['day']); cache={}; choices={}
+                names={x['coord']:x['location'] for x in existing}; names[e['coord']]=e['location']
+                def route(a,b):
+                    if a==b: return (0,'同一地点')
+                    if (a,b) not in cache:
+                        options=['公交 / 地铁（含步行接驳）','步行','骑行','驾车']
+                        selected=self.ask_choice('选择出行方式',f"从 {names.get(a,a)} 到 {names.get(b,b)}，选择这段路的出行方式：",options)
+                        mode=['公交','步行','骑行','驾车'][selected]; choices[(a,b)]=mode
+                        minutes,source=travel(a,b,cfg.get('amap_key'),mode)
+                        cache[(a,b)]=(minutes,mode+' · '+source)
+                    return cache[(a,b)]
+                result=plan(e,existing,route)
+                self.after(0,lambda:self.confirm(e,result,note,existing))
             except Exception as ex:
                 msg=str(ex); self.after(0,lambda:messagebox.showerror('无法规划',msg))
             finally: self.after(0,lambda:(self.add.config(state='normal'),self.status.config(text='')))
         threading.Thread(target=work,daemon=True).start()
-    def confirm(self,e,result,note,mode):
+    def confirm(self,e,result,note,snapshot):
         start,before,after,bs,src,prev,nxt=result
-        info=f"日期：{e['day']}\n活动：{e['title']}\n备注：{e['notes']}\n地点：{e['location']}\n开始：{hm(start)}　结束：{hm(start+e['duration'])}\n耗时：{e['duration']} 分钟\n交通：{mode}\n地点来源：{note}\n"
+        info=f"日期：{e['day']}\n活动：{e['title']}\n备注：{e['notes']}\n地点：{e['location']}\n开始：{hm(start)}　结束：{hm(start+e['duration'])}\n耗时：{e['duration']} 分钟\n地点来源：{note}\n"
         if prev: info+=f"\n上一行程 → 本行程：{before} 分钟（{bs}）"
         if nxt: info+=f"\n本行程 → 下一行程：{after} 分钟（{src}）"
         info+='\n\n确认保存？'
         if messagebox.askyesno('核对规划',info):
-            # Recompute against current saved state to prevent stale confirmation.
             try:
-                cfg=settings(); revised=plan(e,rows(e['day']),lambda a,b:travel(a,b,cfg.get('amap_key'),mode))
-                if revised[0]!=start: raise ValueError('行程已有变化，请重新规划。')
-                with db() as c: c.execute('INSERT INTO events(day,title,location,coord,start,duration,fixed,notes) VALUES(?,?,?,?,?,?,?,?)',(e['day'],e['title'],e['location'],e['coord'],start,e['duration'],int(e.get('start') is not None),e['notes']))
+                with db() as c:
+                    c.row_factory=sqlite3.Row
+                    current=[dict(r) for r in c.execute('SELECT * FROM events WHERE day=? ORDER BY start,id',(e['day'],))]
+                    if current!=snapshot: raise ValueError('当天行程已有变化，请重新规划。')
+                    c.execute('INSERT INTO events(day,title,location,coord,start,duration,fixed,notes) VALUES(?,?,?,?,?,?,?,?)',(e['day'],e['title'],e['location'],e['coord'],start,e['duration'],int(e.get('start') is not None),e['notes']))
                 self.day.set(e['day']); self.refresh()
             except Exception as ex: messagebox.showerror('保存失败',str(ex))
 

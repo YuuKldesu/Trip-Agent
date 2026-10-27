@@ -86,6 +86,19 @@ class Tests(unittest.TestCase):
         with patch('app.urllib.request.urlopen',side_effect=error):
             with self.assertRaises(ValueError) as caught: app.request_json(urllib.request.Request('https://example.com'),'百炼')
         self.assertIn('invalid_api_key',str(caught.exception)); self.assertNotIn('do not echo',str(caught.exception))
+    def test_place_candidates_keep_campuses(self):
+        response={'status':'1','pois':[{'name':'南京大学(仙林校区)','address':'仙林大道','cityname':'南京市','location':'118.96,32.12'},{'name':'南京大学(鼓楼校区)','address':'汉口路','cityname':'南京市','location':'118.77,32.05'},{'name':'外地大学','cityname':'苏州市','location':'120,31'}]}
+        with patch('app.fetch',return_value=response): result=app.find_places('南京大学','test-key')
+        self.assertEqual(len(result),2); self.assertIn('仙林校区',result[0]['name']); self.assertIn('鼓楼校区',result[1]['name'])
+    def test_bicycle_route_uses_high_de_api(self):
+        with patch('app.fetch',return_value={'errcode':0,'data':{'paths':[{'duration':660}]}}) as mock:
+            duration,source=app.travel('118,32','119,32','test-key','骑行')
+        self.assertEqual(duration,11); self.assertIn('/v4/direction/bicycling',mock.call_args.args[0])
+    def test_distinct_transport_on_both_legs(self):
+        existing=[dict(start=540,duration=60,coord='A'),dict(start=840,duration=60,coord='B')]
+        travel_times={('A','C'):(25,'骑行'),('C','B'):(40,'公交')}
+        result=app.plan(dict(start=630,duration=120,coord='C'),existing,lambda a,b:travel_times[(a,b)])
+        self.assertEqual(result[1:5],(25,40,'骑行','公交'))
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):
