@@ -57,6 +57,12 @@ class Tests(unittest.TestCase):
         self.assertEqual(start,540)
         changed['start']=680
         with self.assertRaises(ValueError): app.plan(changed,[e for e in current if e['id']!=1],lambda a,b:(30,'test'))
+    def test_theme_defaults_and_palette(self):
+        self.assertEqual(app.theme_for(None),app.THEMES['暖珊瑚'])
+        self.assertEqual(app.theme_for('不存在'),app.THEMES['暖珊瑚'])
+        for theme in app.THEMES.values():
+            self.assertEqual(set(theme),{'accent','hover','tint'})
+            for color in theme.values(): self.assertRegex(color,r'^#[0-9a-fA-F]{6}$')
     def test_fixed_time(self):
         e=parse_local('2026-11-02下午2点在夫子庙吃饭，90分钟'); self.assertEqual(e['start'],840)
     def test_gap_accounts_for_both_trips(self):

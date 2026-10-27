@@ -9,6 +9,15 @@ DB = HOME / 'trips.sqlite3'
 CONFIG = HOME / 'config.json'
 PLACES = {'南京南站':'118.8022,31.9745','南京站':'118.7978,32.0871','新街口':'118.7857,32.0417','夫子庙':'118.7886,32.0215','南京博物院':'118.8484,32.0448','玄武湖':'118.8030,32.0733','中山陵':'118.8529,32.0617','南京大学':'118.7792,32.0572','总统府':'118.8036,32.0444'}
 
+THEMES = {
+    '暖珊瑚': {'accent':'#c65b40','hover':'#a94831','tint':'#faece6'},
+    '湖水蓝': {'accent':'#247a87','hover':'#1a5d67','tint':'#e4f1f2'},
+    '森林绿': {'accent':'#397553','hover':'#28573b','tint':'#e7f1e9'},
+    '薰衣草紫': {'accent':'#715997','hover':'#584477','tint':'#f0eaf7'},
+    '深海蓝': {'accent':'#315f98','hover':'#234775','tint':'#e6eef9'},
+}
+def theme_for(name): return THEMES.get(name, THEMES['暖珊瑚'])
+
 def db():
     con = sqlite3.connect(DB)
     con.execute('CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, day TEXT NOT NULL, title TEXT NOT NULL, location TEXT NOT NULL, coord TEXT NOT NULL, start INTEGER NOT NULL, duration INTEGER NOT NULL, fixed INTEGER NOT NULL DEFAULT 0)')
@@ -155,6 +164,7 @@ def rows(day):
 class App(tk.Tk):
     def __init__(self):
         super().__init__(); self.title('南京行程 Agent'); self.geometry('1000x700'); self.minsize(800,580)
+        self.theme=theme_for(settings().get('theme'))
         self.configure(bg='#f5f3f0')
         self.option_add('*Font', ('Microsoft YaHei', 10))
         self.main=tk.Frame(self,bg='#f5f3f0',padx=36,pady=26); self.main.pack(fill='both',expand=True)
@@ -165,10 +175,10 @@ class App(tk.Tk):
         tk.Label(title,text='我的日程',font=('Microsoft YaHei',25,'bold'),bg='#f5f3f0',fg='#252525').pack(side='left')
         tk.Label(title,text='把时间留给值得的事',font=('Microsoft YaHei',10),bg='#f5f3f0',fg='#a09a91').pack(side='left',padx=16,pady=(11,0))
         composer=tk.Frame(self.main,bg='white',padx=18,pady=14,highlightbackground='#e9e5df',highlightthickness=1); composer.pack(fill='x')
-        tk.Label(composer,text='✦  告诉我你的计划',bg='white',fg='#d06d52',font=('Microsoft YaHei',11,'bold')).pack(anchor='w')
-        self.input=tk.Text(composer,height=2,font=('Microsoft YaHei',11),wrap='word',relief='flat',bg='white',fg='#36322f',insertbackground='#d06d52'); self.input.pack(fill='x',pady=(10,5)); self.input.insert('1.0','明天在南京博物院参观，约2小时')
+        self.composer_label=tk.Label(composer,text='✦  告诉我你的计划',bg='white',fg=self.theme['accent'],font=('Microsoft YaHei',11,'bold')); self.composer_label.pack(anchor='w')
+        self.input=tk.Text(composer,height=2,font=('Microsoft YaHei',11),wrap='word',relief='flat',bg='white',fg='#36322f',insertbackground=self.theme['accent']); self.input.pack(fill='x',pady=(10,5)); self.input.insert('1.0','明天在南京博物院参观，约2小时')
         bar=tk.Frame(composer,bg='white'); bar.pack(fill='x'); tk.Label(bar,text='出行方式',bg='white',fg='#918a82').pack(side='left'); self.mode=tk.StringVar(value='公交'); ttk.Combobox(bar,textvariable=self.mode,values=['公交','驾车','步行'],state='readonly',width=8).pack(side='left',padx=8)
-        self.add=tk.Button(bar,text='  规划行程  →  ',command=self.submit,bg='#d8755b',fg='white',activebackground='#bc5e46',activeforeground='white',relief='flat',padx=12,pady=7,cursor='hand2'); self.add.pack(side='right'); self.status=tk.Label(bar,text='',bg='white',fg='#918a82'); self.status.pack(side='right',padx=10)
+        self.add=tk.Button(bar,text='  规划行程  →  ',command=self.submit,bg=self.theme['accent'],fg='white',activebackground=self.theme['hover'],activeforeground='white',relief='flat',padx=12,pady=7,cursor='hand2'); self.add.pack(side='right'); self.status=tk.Label(bar,text='',bg='white',fg='#918a82'); self.status.pack(side='right',padx=10)
         row=tk.Frame(self.main,bg='#f5f3f0'); row.pack(fill='x',pady=(16,8))
         tk.Label(row,text='行程看板',font=('Microsoft YaHei',15,'bold'),bg='#f5f3f0',fg='#292725').pack(side='left')
         self.day=tk.StringVar(value=dt.date.today().isoformat())
@@ -202,8 +212,8 @@ class App(tk.Tk):
     def set_view(self,view):
         self.view.set(view); self.refresh()
     def refresh(self):
-        self.month_button.config(bg='#d8755b' if self.view.get()=='month' else 'white',fg='white' if self.view.get()=='month' else '#68605a')
-        self.list_button.config(bg='#d8755b' if self.view.get()=='list' else 'white',fg='white' if self.view.get()=='list' else '#68605a')
+        self.month_button.config(bg=self.theme['accent'] if self.view.get()=='month' else 'white',fg='white' if self.view.get()=='month' else '#68605a')
+        self.list_button.config(bg=self.theme['accent'] if self.view.get()=='list' else 'white',fg='white' if self.view.get()=='list' else '#68605a')
         if self.view.get()=='list':
             self.refresh_list(); return
         date=dt.date.fromisoformat(self.day.get()); weeks=calendar.Calendar(firstweekday=0).monthdatescalendar(date.year,date.month)
@@ -230,20 +240,20 @@ class App(tk.Tk):
                 bg='#f2efeb' if current else '#f8f6f3'
                 column=tk.Frame(self.gridframe,bg=bg,padx=3,pady=5,highlightbackground='#e6e0da',highlightthickness=1)
                 column.grid(row=r,column=i,sticky='nsew')
-                day_label=tk.Label(column,text=str(day.day)+('  · 今天' if is_today else ''),bg=bg,fg='#d06d52' if is_today else ('#66605a' if current else '#c1b8af'),font=('Microsoft YaHei',9,'bold'),anchor='w')
+                day_label=tk.Label(column,text=str(day.day)+('  · 今天' if is_today else ''),bg=bg,fg=self.theme['accent'] if is_today else ('#66605a' if current else '#c1b8af'),font=('Microsoft YaHei',9,'bold'),anchor='w')
                 day_label.pack(fill='x',padx=3,pady=(0,5))
                 for e in items:
                     card=tk.Frame(column,bg='white',padx=6,pady=7,highlightbackground='#e8dfd9',highlightthickness=1); card.pack(fill='x',pady=(0,6))
                     def add_label(text,fg,font):
                         label=tk.Label(card,text=text,bg='white',fg=fg,font=font,anchor='w',justify='left',wraplength=width)
                         label.pack(fill='x',anchor='w',pady=(0,3)); self.wrapping_labels.append(label)
-                    add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),'#d06d52',('Arial',9,'bold'))
+                    add_label(hm(e['start'])+' – '+hm(e['start']+e['duration']),self.theme['accent'],('Arial',9,'bold'))
                     add_label(e['title'],'#302c29',('Microsoft YaHei',10,'bold'))
                     add_label('地点：'+e['location'],'#77716a',('Microsoft YaHei',9))
                     add_label('耗时：'+str(e['duration'])+' 分钟','#77716a',('Microsoft YaHei',9))
                     if e.get('notes'): add_label('备注：'+e['notes'],'#77716a',('Microsoft YaHei',9))
                     actions=tk.Frame(card,bg='white'); actions.pack(anchor='e')
-                    tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg='#d06d52',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
+                    tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
                     tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2',font=('Microsoft YaHei',8)).pack(side='left')
                     self.bind_card(card,e['id'])
         self.canvas.yview_moveto(0)
@@ -273,7 +283,7 @@ class App(tk.Tk):
                 gap=short_gap(previous,e)
                 if gap is not None:
                     gapline=tk.Frame(wrapper,bg='#f5f3f0'); gapline.pack(fill='x',pady=(0,8))
-                    tk.Label(gapline,text=f'◷  间隔 {gap} 分钟',bg='#e2eff0',fg='#55959c',padx=10,pady=4,font=('Microsoft YaHei',9,'bold')).pack(side='left',padx=(105,0))
+                    tk.Label(gapline,text=f'◷  间隔 {gap} 分钟',bg=self.theme['tint'],fg=self.theme['accent'],padx=10,pady=4,font=('Microsoft YaHei',9,'bold')).pack(side='left',padx=(105,0))
             row=tk.Frame(wrapper,bg='#f5f3f0'); row.pack(fill='x',pady=(0,8))
             timebox=tk.Frame(row,bg='#ebeef0',width=92,padx=8,pady=10); timebox.pack(side='left',fill='y',padx=(0,12)); timebox.pack_propagate(False)
             tk.Label(timebox,text=hm(e['start']),bg='#ebeef0',fg='#292725',font=('Arial',12,'bold')).pack()
@@ -281,7 +291,7 @@ class App(tk.Tk):
             tk.Label(timebox,text=hm(e['start']+e['duration']),bg='#ebeef0',fg='#292725',font=('Arial',12,'bold')).pack()
             card=tk.Frame(row,bg='white',padx=15,pady=10,highlightbackground='#e8e4df',highlightthickness=1); card.pack(side='left',fill='both',expand=True)
             actions=tk.Frame(card,bg='white'); actions.pack(side='right')
-            tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg='#d06d52',relief='flat',cursor='hand2').pack()
+            tk.Button(actions,text='编辑',command=lambda event_id=e['id']:self.edit_event(event_id),bg='white',fg=self.theme['accent'],relief='flat',cursor='hand2').pack()
             tk.Button(actions,text='删除',command=lambda event_id=e['id']:self.delete(event_id),bg='white',fg='#a99a90',relief='flat',cursor='hand2').pack()
             for text,fg,font in [(e['title'],'#302c29',('Microsoft YaHei',12,'bold')),('⌖  '+e['location'],'#77716a',('Microsoft YaHei',10)),('备注：'+e['notes'] if e.get('notes') else '', '#9a928b',('Microsoft YaHei',9))]:
                 if text:
@@ -357,12 +367,23 @@ class App(tk.Tk):
         for i,(key,label) in enumerate([('deepseek_key','DeepSeek API Key'),('amap_key','高德 Web 服务 API Key')]):
             ttk.Label(frame,text=label).grid(row=i*2,column=0,sticky='w'); var=tk.StringVar(value=cfg.get(key,'')); values[key]=var; ttk.Entry(frame,textvariable=var,show='*',width=55).grid(row=i*2+1,column=0,pady=(3,12))
         ttk.Label(frame,text='密钥明文存储于本机用户目录，请勿分享配置文件。').grid(row=4,column=0,sticky='w')
+        ttk.Label(frame,text='主题色').grid(row=5,column=0,sticky='w',pady=(16,4))
+        selected=tk.StringVar(value=cfg.get('theme') if cfg.get('theme') in THEMES else '暖珊瑚')
+        palette=tk.Frame(frame); palette.grid(row=6,column=0,sticky='w')
+        for name,colors in THEMES.items():
+            item=tk.Frame(palette); item.pack(side='left',padx=(0,8))
+            tk.Label(item,text='●',fg=colors['accent'],font=('Arial',16)).pack(side='left')
+            ttk.Radiobutton(item,text=name,variable=selected,value=name).pack(side='left')
         def save():
-            CONFIG.write_text(json.dumps({k:v.get().strip() for k,v in values.items()},ensure_ascii=False),encoding='utf-8')
+            cfg.update({k:v.get().strip() for k,v in values.items()}); cfg['theme']=selected.get()
+            CONFIG.write_text(json.dumps(cfg,ensure_ascii=False),encoding='utf-8')
             try: CONFIG.chmod(0o600)
             except OSError: pass
+            self.theme=theme_for(selected.get())
+            self.composer_label.config(fg=self.theme['accent']); self.input.config(insertbackground=self.theme['accent'])
+            self.add.config(bg=self.theme['accent'],activebackground=self.theme['hover']); self.refresh()
             win.destroy()
-        ttk.Button(frame,text='保存',command=save).grid(row=5,column=0,sticky='e',pady=(12,0))
+        ttk.Button(frame,text='保存',command=save).grid(row=7,column=0,sticky='e',pady=(12,0))
     def submit(self):
         text=self.input.get('1.0','end').strip(); mode=self.mode.get(); cfg=settings()
         if not text: return
