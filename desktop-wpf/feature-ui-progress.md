@@ -12,3 +12,5 @@ Task4 pending fresh final read-only review and package verification.
 Tasks1-3 complete: final73/73 domain,36/36 actualWPF, Release0warnings/errors. Cancellation RED→GREEN and offline full UI-save pipelines verified.
 Final review: 2Important, 0Critical,1Minor regradedImportant (user duration silently ignored has scheduling consequences). All3 fixed in one pass; nested-overlap domain70/71 RED, actualWPF duration+newweekly RED, new future-conflict API missing RED, final73/73+36/36 GREEN.
 Final review limits: static reviewer did not run services/user data; implementer verified actual控件 persistence and screenshots. No deferred minors. Packaging in progress.
+
+Task4 complete: independent win-x64 publish,73/73 tests; direct and extracted runtime EXE smoke exit0 (17 demo activities). Runtime427 entries/source72 entries SHA256 all matched. Source ZIP extracted to new folder, full solution rebuilt0warnings/errors,73/73 passed. Main unchanged; local feature branch retained; only the requested old-version backup was pushed. No deferred minors.
