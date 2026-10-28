@@ -6,7 +6,7 @@ namespace Planner.Desktop;
 public static class Ui
 {
     public static Brush Brush(string hex){try{return (Brush)new BrushConverter().ConvertFromString(hex)!;}catch{return Brushes.BurlyWood;}}
-    public static TextBlock Text(string text,double size=13,bool bold=false)=>new(){Text=text,FontSize=size,FontWeight=bold?FontWeights.SemiBold:FontWeights.Normal,TextWrapping=TextWrapping.Wrap,Margin=new(0,3,0,7)};
+    public static TextBlock Text(string text,double size=13,bool bold=false){var value=new TextBlock{Text=text,FontWeight=bold?FontWeights.SemiBold:FontWeights.Normal,TextWrapping=TextWrapping.Wrap,Margin=new(0,3,0,7)};Typography.Set(value,size);return value;}
     public static Button Button(string text,Action action,bool primary=false){var b=new Button{Content=text};if(primary){b.Background=Brush("#B76F49");b.Foreground=Brushes.White;}b.Click+=(_,_)=>Safe(action);return b;}
     public static void Safe(Action action){try{action();}catch(Exception ex){MessageBox.Show(ex.Message,"操作未完成",MessageBoxButton.OK,MessageBoxImage.Warning);}}
     public static bool Confirm(string text)=>MessageBox.Show(text,"请确认",MessageBoxButton.OKCancel,MessageBoxImage.Question)==MessageBoxResult.OK;

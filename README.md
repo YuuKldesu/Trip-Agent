@@ -6,6 +6,8 @@
 
 `desktop-wpf/` 为C#/WPF端，已合并feature/ui v1.12.9（978c678）并适配其紧凑编辑、时间选择、完成过滤、视图缓存和识别→完善→交通→确认流程；保留本地暖色风格、多表、周期、地图和提醒。周课表移除，点击月历日期空白添加，空库默认错落示例。Python原分支与WPF存储独立，不自动合并数据库。
 
+当前WPF界面版新增暖红日期头、灰底白色圆角卡片，星标重要与统一右滑淡出完成互相独立。支持可调字号、完整/简洁双模式及自动适配。最新改版前备份分支为backup/pre-soft-ui-20261028-69d1921，开发分支codex/soft-ui-sidebar-20261028，main保持原样。
+
 详见[WPF使用说明](desktop-wpf/README.md)、[本次验证](desktop-wpf/VERIFICATION.md)。旧版本已上传独立备份分支backup/local-wpf-20261028-90c1f61，本次开发分支codex/feature-ui-logic-20261028，不改main。
 
 ## 启动

@@ -79,6 +79,7 @@ Test("LLM selected inactive table supplies its name and editable occurrences onl
 
 BoardTests.Register(Test);
 FeatureUiTests.Register(Test);
+SoftUiTests.Register(Test);
 int failed=0;
 foreach(var (name,body) in tests) { try {body();Console.WriteLine("PASS "+name);}catch(Exception ex){failed++;Console.WriteLine("FAIL "+name+": "+ex.Message);} }
 Console.WriteLine($"RESULT {tests.Count-failed}/{tests.Count} passed");

@@ -20,7 +20,7 @@ public sealed class EditorWindow:Window
         var save=Ui.Button("保存行程",()=>{},true);actions.Children.Add(save);save.Click+=async(_,_)=>{if(closing)return;save.IsEnabled=false;status.Text="正在核对…";try{await SaveAsync();}catch(OperationCanceledException){}catch(Exception ex){status.Text=ex.Message;}finally{if(!closing){save.IsEnabled=true;}}};
         var panel=new StackPanel();outer.Children.Add(new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
         var actualStart=item?.Start??initial??vm.SelectedDate.ToDateTime(new(9,0));var actualEnd=item?.End??actualStart.AddHours(1);
-        title=Ui.Input(item?.Title??"");title.Tag="ActivityTitle";title.FontSize=22;title.FontWeight=FontWeights.SemiBold;Ui.Field(panel,item is null?"添加一项安排":"调整这项安排",title);
+        title=Ui.Input(item?.Title??"");title.Tag="ActivityTitle";Typography.Set(title,22);title.FontWeight=FontWeights.SemiBold;Ui.Field(panel,item is null?"添加一项安排":"调整这项安排",title);
         panel.Children.Add(Ui.Text(item is null?"填写活动、日期与时间，其他信息可以稍后完善。":new Planner.Data.BoardPreferenceStore(vm.DataDirectory).Load().Completed.Contains(item.Key)?"已完成":"待进行",12));
         place=Ui.Input(item is null?"":vm.State.PlaceName(item.PlaceId));if(item?.PlaceId is null)place.Text="";
         date=new(){SelectedDate=actualStart.Date};until=new();start=new(actualStart.ToString("HH:mm")){Tag="StartTime"};end=new(actualEnd.ToString("HH:mm")){Tag="EndTime"};overnight.IsChecked=actualEnd.Date>actualStart.Date;

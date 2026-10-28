@@ -10,6 +10,7 @@ public sealed class PlannerViewModel : INotifyPropertyChanged
     readonly SqliteStore store;
     public string DataDirectory {get;}
     public PlannerState State {get;private set;}
+    public BoardPreferences Appearance {get;private set;}
     public HashSet<string> HiddenTables {get;}=[];
     public DateOnly Week {get;private set;}=Clock.Monday(Clock.Today);
     public DateOnly SelectedDate {get;set;}=Clock.Today;
@@ -19,12 +20,13 @@ public sealed class PlannerViewModel : INotifyPropertyChanged
     public event Action? Changed;
     public PlannerViewModel(string directory,bool seedDemo=true)
     {
-        DataDirectory=directory;bool fresh=!File.Exists(Path.Combine(directory,"planner.db"));store=new(Path.Combine(directory,"planner.db"));State=store.Load();
+        DataDirectory=directory;Appearance=new BoardPreferenceStore(directory).Load();bool fresh=!File.Exists(Path.Combine(directory,"planner.db"));store=new(Path.Combine(directory,"planner.db"));State=store.Load();
         if(State.Tables.Count==0){var n=State.Copy();n.Tables.Add(new(){Name="工作安排",Color="#E5BD99"});n.Tables.Add(new(){Name="个人安排",Color="#C2C3A5"});n.Revision++;Persist(n);}
         SelectedTableId=State.Tables[0].Id;
         if(seedDemo&&fresh)Persist(DemoSchedule.AddToEmpty(State,Clock.Today));
     }
     public void Notify(string? status=null){if(status is not null)Status=status;PropertyChanged?.Invoke(this,new(null));Changed?.Invoke();}
+    public void UpdateAppearance(Action<BoardPreferences> change){Appearance=new BoardPreferenceStore(DataDirectory).Update(change);Typography.Apply(Appearance.FontSize);Notify();}
     public void ChangeWeek(int weeks){Week=Week.AddDays(weeks*7);SelectedDate=Week;Notify();}
     public void Today(){SelectedDate=Clock.Today;Week=Clock.Monday(SelectedDate);Notify();}
     public void FocusDate(DateOnly date){SelectedDate=date;Week=Clock.Monday(date);Notify();}
