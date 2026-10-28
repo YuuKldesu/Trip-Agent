@@ -9,9 +9,9 @@ public sealed class EditorWindow:Window
     public DateOnly? SavedDate {get;private set;}
     readonly PlannerViewModel vm;readonly Occurrence? occurrence;readonly long openedRevision;readonly CancellationTokenSource cancel=new();
     readonly TextBox title,place,windowStart,windowEnd,note,lead;readonly TimeEntry start,end;
-    readonly DatePicker date,until;readonly ComboBox table,kind,constraint,scope,mode;
+    readonly DatePicker date,endDate,until;readonly ComboBox table,kind,constraint,scope,mode;
     readonly CheckBox reminder=new(){Content="启用提醒"},overnight=new(){Content="结束于次日"},checkTravel=new(){Content="保存前核验相邻交通"};readonly CheckBox[] weekdays;
-    readonly TextBlock durationLabel=Ui.Text("",12),status=Ui.Text("",11);bool closing;
+    readonly TextBlock durationLabel=Ui.Text("",12),status=Ui.Text("",11);bool closing,syncingTimes;DateTime previousStart;
     public EditorWindow(PlannerViewModel model,Occurrence? item=null,DateTime? initial=null)
     {
         vm=model;occurrence=item;openedRevision=vm.State.Revision;Title=item is null?"自定义添加":"编辑行程";Width=820;Height=760;MinWidth=700;MinHeight=580;WindowStartupLocation=WindowStartupLocation.CenterOwner;Background=Ui.Brush("#FBF7F0");FontFamily=new("Microsoft YaHei UI");
@@ -23,10 +23,11 @@ public sealed class EditorWindow:Window
         title=Ui.Input(item?.Title??"");title.Tag="ActivityTitle";Typography.Set(title,22);title.FontWeight=FontWeights.SemiBold;Ui.Field(panel,item is null?"添加一项安排":"调整这项安排",title);
         panel.Children.Add(Ui.Text(item is null?"填写活动、日期与时间，其他信息可以稍后完善。":new Planner.Data.BoardPreferenceStore(vm.DataDirectory).Load().Completed.Contains(item.Key)?"已完成":"待进行",12));
         place=Ui.Input(item is null?"":vm.State.PlaceName(item.PlaceId));if(item?.PlaceId is null)place.Text="";
-        date=new(){SelectedDate=actualStart.Date};until=new();start=new(actualStart.ToString("HH:mm")){Tag="StartTime"};end=new(actualEnd.ToString("HH:mm")){Tag="EndTime"};overnight.IsChecked=actualEnd.Date>actualStart.Date;
-        AddPair(panel,"日期",date,"地点",place);AddPair(panel,"开始时间",start,"结束时间",end);
-        start.Changed+=UpdateDuration;end.Changed+=UpdateDuration;overnight.Click+=(_,_)=>UpdateDuration();
-        var quick=new WrapPanel();foreach(int minutes in new[]{30,60,90,120}){int duration=minutes;quick.Children.Add(Ui.Button(minutes+" 分钟",()=>{if(TimeOnly.TryParseExact(start.Text,"HH:mm",out var st)){var finish=actualStart.Date.Add(st.ToTimeSpan()).AddMinutes(duration);end.Text=finish.ToString("HH:mm");overnight.IsChecked=finish.Date>actualStart.Date;UpdateDuration();}}));}quick.Children.Add(durationLabel);panel.Children.Add(quick);
+        date=new StyledDateEntry{SelectedDate=actualStart.Date,Tag="StartDate"};endDate=new StyledDateEntry{SelectedDate=actualEnd.Date,Tag="EndDate"};until=new StyledDateEntry();start=new(actualStart.ToString("HH:mm")){Tag="StartTime",DateContext=actualStart.Date};end=new(actualEnd.ToString("HH:mm")){Tag="EndTime",DateContext=actualEnd.Date};previousStart=actualStart;
+        AddPair(panel,"开始日期",date,"结束日期",endDate);AddPair(panel,"开始时间",start,"结束时间",end);Ui.Field(panel,"地点",place);
+        start.Changed+=StartChanged;end.Changed+=EndChanged;start.DateTimeChanged+=_=>StartChanged();end.DateTimeChanged+=_=>EndChanged();
+        date.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&date.SelectedDate is {} d){start.DateContext=d.Date;StartChanged();}};endDate.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&endDate.SelectedDate is {} d){end.DateContext=d.Date;EndChanged();}};
+        var quick=new WrapPanel();foreach(int minutes in new[]{30,60,90,120}){int duration=minutes;quick.Children.Add(Ui.Button(minutes+" 分钟",()=>{if(TimeOnly.TryParseExact(start.Text,"HH:mm",out var st)&&date.SelectedDate is {} d)SetEnd(d.Date.Add(st.ToTimeSpan()).AddMinutes(duration));}));}quick.Children.Add(durationLabel);panel.Children.Add(quick);
         mode=Ui.Choices(["公交","步行","骑行","驾车"]);checkTravel.IsChecked=item?.PlaceId is {} pid&&vm.State.Places.Any(p=>p.Id==pid&&p.Lng is not null);panel.Children.Add(Ui.Row(checkTravel,mode));
         note=Ui.Input(item?.Activity.Note??"");note.AcceptsReturn=true;note.TextWrapping=TextWrapping.Wrap;note.MinHeight=90;Ui.Field(panel,"备注",note);
         table=new();foreach(var t in vm.State.Tables)table.Items.Add(new ComboBoxItem{Content=t.Name,Tag=t.Id});table.SelectedIndex=Math.Max(0,vm.State.Tables.FindIndex(t=>t.Id==(item?.Activity.TableId??vm.SelectedTableId)));
@@ -34,21 +35,28 @@ public sealed class EditorWindow:Window
         var rule=vm.State.Rules.FirstOrDefault(r=>r.ActivityId==item?.Activity.Id);weekdays=Enumerable.Range(0,7).Select(i=>new CheckBox{Content=new[]{"一","二","三","四","五","六","日"}[i],IsChecked=rule is not null&&(rule.WeekMask&(1<<i))!=0}).ToArray();until.SelectedDate=rule?.ValidUntil?.ToDateTime(TimeOnly.MinValue);
         windowStart=Ui.Input(item?.Activity.WindowStart?.ToString("HH:mm")??rule?.WindowFrom??"08:00");windowEnd=Ui.Input(item?.Activity.WindowEnd?.ToString("HH:mm")??"22:00");
         var setting=vm.State.Reminders.FirstOrDefault(r=>r.ActivityId==item?.Activity.Id);reminder.IsChecked=setting?.Enabled??false;lead=Ui.Input((setting?.LeadMin??15).ToString());lead.Width=80;
-        var more=new StackPanel();AddPair(more,"所属行程表",table,"重复方式",kind);more.Children.Add(Ui.Row(weekdays));Ui.Field(more,"重复结束日（可留空）",until);if(item?.Activity.Kind=="WEEKLY")Ui.Field(more,"修改影响范围",scope);Ui.Field(more,"排程约束",constraint);AddPair(more,"灵活范围开始",windowStart,"灵活范围结束",windowEnd);more.Children.Add(overnight);more.Children.Add(Ui.Row(reminder,Ui.Text("提前分钟"),lead));
+        var more=new StackPanel();AddPair(more,"所属行程表",table,"重复方式",kind);more.Children.Add(Ui.Row(weekdays));Ui.Field(more,"重复结束日（可留空）",until);if(item?.Activity.Kind=="WEEKLY")Ui.Field(more,"修改影响范围",scope);Ui.Field(more,"排程约束",constraint);AddPair(more,"灵活范围开始",windowStart,"灵活范围结束",windowEnd);more.Children.Add(Ui.Row(reminder,Ui.Text("提前分钟"),lead));
         panel.Children.Add(new Expander{Header="更多设置 · 行程表、周期与提醒",Content=more,IsExpanded=item?.Activity.Kind=="WEEKLY",Margin=new(0,14,0,10)});
         if(item?.Activity.Kind=="WEEKLY"){void UpdateScope(){bool enabled=scope.SelectedIndex==1;foreach(var c in new Control[]{table,kind,constraint,note,until,windowStart,windowEnd}.Concat(weekdays))c.IsEnabled=enabled;}scope.SelectionChanged+=(_,_)=>UpdateScope();UpdateScope();}
         UpdateDuration();PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape){Close();e.Handled=true;}};Closed+=(_,_)=>{closing=true;cancel.Cancel();};
     }
     public string DurationText=>durationLabel.Text;
-    void UpdateDuration(){if(TimeOnly.TryParseExact(start.Text,"HH:mm",out var s)&&TimeOnly.TryParseExact(end.Text,"HH:mm",out var e)){int minutes=(int)(e-s).TotalMinutes+(overnight.IsChecked==true?1440:0);durationLabel.Text=minutes>0?$"耗时 {minutes} 分钟":"结束时间应晚于开始时间";}else durationLabel.Text="请填写HH:mm格式时间";}
+    void StartChanged()
+    {
+        if(syncingTimes||!TimeOnly.TryParseExact(start.Text,"HH:mm",out var s))return;var next=start.DateContext.Date.Add(s.ToTimeSpan());
+        syncingTimes=true;try{if(endDate.SelectedDate is {} d&&TimeOnly.TryParseExact(end.Text,"HH:mm",out var e)&&d.Date.Add(e.ToTimeSpan())>previousStart){var moved=DateTimeSelection.MoveStart(previousStart,d.Date.Add(e.ToTimeSpan()),next);endDate.SelectedDate=moved.End.Date;end.DateContext=moved.End.Date;end.Text=moved.End.ToString("HH:mm");}date.SelectedDate=next.Date;previousStart=next;}finally{syncingTimes=false;}UpdateDuration();
+    }
+    void EndChanged(){if(syncingTimes)return;if(TimeOnly.TryParseExact(end.Text,"HH:mm",out _)&&endDate.SelectedDate!=end.DateContext.Date){syncingTimes=true;try{endDate.SelectedDate=end.DateContext.Date;}finally{syncingTimes=false;}}UpdateDuration();}
+    void SetEnd(DateTime value){syncingTimes=true;try{endDate.SelectedDate=value.Date;end.DateContext=value.Date;end.Text=value.ToString("HH:mm");}finally{syncingTimes=false;}UpdateDuration();}
+    void UpdateDuration(){if(date.SelectedDate is {} from&&endDate.SelectedDate is {} untilDay&&TimeOnly.TryParseExact(start.Text,"HH:mm",out var s)&&TimeOnly.TryParseExact(end.Text,"HH:mm",out var e)){int minutes=(int)(untilDay.Date.Add(e.ToTimeSpan())-from.Date.Add(s.ToTimeSpan())).TotalMinutes;overnight.IsChecked=untilDay.Date>from.Date;durationLabel.Text=minutes>0?$"耗时 {minutes} 分钟"+(untilDay.Date>from.Date?$" · 跨 {(untilDay.Date-from.Date).Days} 天":""):"结束日期时间应晚于开始";}else durationLabel.Text="请填写日期和HH:mm格式时间";}
     static void AddPair(Panel parent,string left,Control first,string right,Control second){var row=new Grid{Margin=new(0,0,0,4)};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new());var a=new StackPanel{Margin=new(0,0,10,0)};var b=new StackPanel{Margin=new(10,0,0,0)};Ui.Field(a,left,first);Ui.Field(b,right,second);Grid.SetColumn(b,1);row.Children.Add(a);row.Children.Add(b);parent.Children.Add(row);}
     async Task SaveAsync()
     {
         if(vm.State.Revision!=openedRevision)throw new InvalidOperationException("相关行程已发生变化，请关闭后重新打开编辑。 ");
         var day=DateOnly.FromDateTime(date.SelectedDate??throw new ArgumentException("请选择日期。"));
         if(!TimeOnly.TryParseExact(start.Text,"HH:mm",out var st)||!TimeOnly.TryParseExact(end.Text,"HH:mm",out var et))throw new ArgumentException("时间请使用HH:mm格式，例如09:30。");
-        var begin=day.ToDateTime(st);var finish=day.ToDateTime(et).AddDays(overnight.IsChecked==true?1:0);
-        if(finish<=begin)throw new ArgumentException("结束时间应晚于开始；跨日请勾选次日。");
+        var begin=day.ToDateTime(st);var finish=(endDate.SelectedDate??throw new ArgumentException("请选择结束日期。")).Date.Add(et.ToTimeSpan());
+        if(finish<=begin)throw new ArgumentException("结束日期时间应晚于开始；跨日请设置正确的结束日期。");
         var a=occurrence is null?new Activity():JsonKit.Clone(occurrence.Activity);
         a.Title=title.Text.Trim();a.TableId=(string)((ComboBoxItem)table.SelectedItem).Tag;a.StartAt=begin;a.EndAt=finish;a.DurationMin=(int)(finish-begin).TotalMinutes;a.Note=note.Text;
         a.Kind=kind.SelectedIndex==1?"WEEKLY":"ONCE";a.ConstraintType=constraint.SelectedIndex==1?"FLEXIBLE":"FIXED";

@@ -22,6 +22,7 @@ static class Program
         {
             try
             {
+                await DateTimeChecks.Run(main,vm,Check);
                 await Task.Delay(250);var board=Walk(main).OfType<ScheduleBoard>().Single();Check(board.ViewMode=="MONTH","默认打开整月看板");
                 Check(Texts(board).Contains("行程看板")&&Texts(board).Contains("周一")&&Texts(board).Contains("周日"),"月历标题和七天表头可见");
                 Check(Texts(board).Any(t=>t.Contains("09:00—18:00")),"长时工作以紧凑卡片显示时间");Capture(main,Path.Combine(directory,"month.png"));

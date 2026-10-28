@@ -172,7 +172,7 @@ public sealed class ScheduleBoard:Grid
         var card=new SwipeActivityCard(entry);var panel=new StackPanel();var top=new DockPanel();DockPanel.SetDock(card.Star,Dock.Right);top.Children.Add(card.Star);
         var time=Ui.Text(entry.TimeText+(entry.ContinuesFromYesterday?" · 续":""),12,true);time.Foreground=Ui.Brush("#9B5142");time.Margin=new(0,3,0,5);top.Children.Add(time);panel.Children.Add(top);
         var title=Ui.Text(o.Title,list?15:14,true);title.Margin=new(0,0,0,6);title.Foreground=Ui.Brush("#443B35");panel.Children.Add(title);
-        panel.Children.Add(Muted("地点："+vm.State.PlaceName(o.PlaceId),12));panel.Children.Add(Muted("耗时："+((int)(o.End-o.Start).TotalMinutes)+" 分钟",11));
+        panel.Children.Add(Muted("地点："+vm.State.PlaceName(o.PlaceId),12));panel.Children.Add(Muted(entry.DurationText,11));if(entry.ContinuityText.Length>0)panel.Children.Add(Muted(entry.ContinuityText,11));
         if(!string.IsNullOrWhiteSpace(o.Activity.Note))panel.Children.Add(Muted("备注："+o.Activity.Note,12));
         panel.Children.Add(Muted(table.Name+(o.OriginDate is null?"":" · 每周")+(!active?" · 未生效":""),11));
         if(warnings is {Count:>0}){var warning=Ui.Text(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"! 时间冲突":"◷ 交通待核验",11,true);warning.Foreground=Ui.Brush(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"#AF5146":"#986638");warning.Margin=new(0,3,0,0);panel.Children.Add(warning);}
