@@ -14,3 +14,5 @@ Final read-only review:1Important(table dialog at22 clips Delete),1Minor(full di
 Computer-use boundary: sky UIA matched isolated QA window, screenshot did not reliably match target. No mouse swipe injection attempted; closed verified QA close button and process exit0. Native mouse/touch hardware not claimed verified; actualWPF control/geometry checks remain evidence.
 
 Tasks1-3 complete; final81/81 domain61/61 actualWPF,0warnings/errors. One review fix pass complete: table clipping RED→GREEN(client431, bottom463.8→406), full remembered1260x760 RED→GREEN. No deferred minors. Native hardware boundary recorded in VERIFICATION. Task4 packaging in progress.
+
+Task4 complete: separate runtime publish/direct EXE smoke exit0; runtimeZIP427 entries and sourceZIP85 entries SHA256 matched; extracted full EXE1480x920 exit0 and compact/font22 EXE400x760 exit0,17 demo activities; sourceZIP extracted/fullsolution rebuild0warnings/errors,81/81. Code and screenshots verified; final docs-only completion update does not alter built code. Feature branch remains local, no main merge/push; requested pre-change backup remains on remote.
