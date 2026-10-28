@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using Planner.Core;
 using Planner.Data;
@@ -17,11 +17,12 @@ public sealed class PlannerViewModel : INotifyPropertyChanged
     public string Status {get;private set;}="已就绪 · 本地保存";
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action? Changed;
-    public PlannerViewModel(string directory)
+    public PlannerViewModel(string directory,bool seedDemo=true)
     {
-        DataDirectory=directory;store=new(Path.Combine(directory,"planner.db"));State=store.Load();
+        DataDirectory=directory;bool fresh=!File.Exists(Path.Combine(directory,"planner.db"));store=new(Path.Combine(directory,"planner.db"));State=store.Load();
         if(State.Tables.Count==0){var n=State.Copy();n.Tables.Add(new(){Name="工作安排",Color="#E5BD99"});n.Tables.Add(new(){Name="个人安排",Color="#C2C3A5"});n.Revision++;Persist(n);}
         SelectedTableId=State.Tables[0].Id;
+        if(seedDemo&&fresh)Persist(DemoSchedule.AddToEmpty(State,Clock.Today));
     }
     public void Notify(string? status=null){if(status is not null)Status=status;PropertyChanged?.Invoke(this,new(null));Changed?.Invoke();}
     public void ChangeWeek(int weeks){Week=Week.AddDays(weeks*7);SelectedDate=Week;Notify();}
@@ -40,8 +41,6 @@ public sealed class PlannerViewModel : INotifyPropertyChanged
     public void LoadSample()
     {
         if(State.Activities.Count>0)throw new InvalidOperationException("示例只能载入空行程，避免混入已有内容。");
-        var work=State.Tables[0].Id;var personal=State.Tables.Last().Id;var monday=Week;
-        var commands=new List<EditCommand>{new(){Activity=new(){TableId=work,Title="每周学习安排（示例）",Kind="WEEKLY",DurationMin=120},Rule=new(){ValidFrom=monday,WeekMask=31,StartTime="09:00"}},new(){Activity=new(){TableId=personal,Title="整理本周计划（示例）",StartAt=monday.AddDays(2).ToDateTime(new(14,0)),EndAt=monday.AddDays(2).ToDateTime(new(15,30)),DurationMin=90}},new(){Activity=new(){TableId=personal,Title="图书馆阅读（示例）",StartAt=monday.AddDays(5).ToDateTime(new(10,0)),EndAt=monday.AddDays(5).ToDateTime(new(12,0)),DurationMin=120},Place=new(){Name="南京图书馆",InputName="南京图书馆"}}};
-        Edit(commands);
+        Persist(DemoSchedule.AddToEmpty(State,Clock.Today));
     }
 }

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Planner.Core;
@@ -28,7 +28,7 @@ public partial class MainWindow : Window
         tables.Children.Clear();tables.Children.Add(Ui.Text("我的行程表",16,true));
         foreach(var t in vm.State.Tables)
         {
-            var panel=new StackPanel();var pick=Ui.Button(t.Name,()=>{vm.SelectedTableId=t.Id;scopeTables.Clear();scopeInitialized=false;assistantDraft=null;vm.Notify();});pick.Background=Ui.Brush(t.Color);pick.FontWeight=t.Id==vm.SelectedTableId?FontWeights.Bold:FontWeights.Normal;panel.Children.Add(pick);
+            var panel=new StackPanel();var pick=Ui.Button(t.Name,()=>{vm.SelectedTableId=t.Id;assistantCancel?.Cancel();vm.Notify();});pick.Background=Ui.Brush(t.Color);pick.FontWeight=t.Id==vm.SelectedTableId?FontWeights.Bold:FontWeights.Normal;panel.Children.Add(pick);
             var visible=new CheckBox{Content="显示",IsChecked=!vm.HiddenTables.Contains(t.Id)};visible.Click+=(_,_)=>{if(visible.IsChecked==true)vm.HiddenTables.Remove(t.Id);else vm.HiddenTables.Add(t.Id);vm.Notify();};
             var active=new CheckBox{Content="生效",IsChecked=t.Enabled};active.Click+=(_,_)=>Ui.Safe(()=>{if(Ui.Confirm($"{(active.IsChecked==true?"启用":"停用")}“{t.Name}”？这会改变排程约束。"))vm.Mutate(s=>{var x=s.Tables.Single(x=>x.Id==t.Id);x.Enabled=active.IsChecked==true;x.Version++;foreach(var l in s.Legs)l.ValidationStatus="STALE";foreach(var p in s.Plans)p.Status="STALE";});else Refresh();});
             panel.Children.Add(Ui.Row(visible,active,Ui.Button("设置",()=>TableEditor(t))));tables.Children.Add(Ui.Card(panel,"#F6EDDF"));
@@ -45,7 +45,13 @@ public partial class MainWindow : Window
         var warnings=vm.WeekConflicts();var list=new StackPanel();list.Children.Add(Ui.Text("本周检查",14,true));list.Children.Add(Ui.Text(warnings.Count==0?"暂无时间重叠；未填地点的事项尚未核验交通。":string.Join("\n\n",warnings.Take(6).Select(x=>x.Message)),12));details.Children.Add(Ui.Card(list));
         BuildAssistant(details);
     }
-    void OpenEditor(Occurrence? o,DateTime? initial=null){if(vm.State.Tables.Count==0)throw new ArgumentException("请先新建一份行程表。");var w=new EditorWindow(vm,o,initial){Owner=this};if(w.ShowDialog()==true&&w.SavedDate is {} date)calendar.NavigateTo(date);}
+    EditorWindow? activeEditor;
+    void OpenEditor(Occurrence? o,DateTime? initial=null)
+    {
+        if(vm.State.Tables.Count==0)throw new ArgumentException("请先新建一份行程表。");if(activeEditor is not null){activeEditor.Activate();return;}
+        var w=new EditorWindow(vm,o,initial){Owner=this};activeEditor=w;w.Closed+=(_,_)=>{activeEditor=null;if(w.SavedDate is {} date)calendar.NavigateTo(date);};w.Show();
+    }
+
     void Delete(Occurrence o)
     {
         if(!Ui.Confirm($"删除“{o.Title}”？\n"+(o.OriginDate is null?"此项活动及关联路线和提醒将移除。":"仅取消这次，不影响之后的每周安排。")))return;

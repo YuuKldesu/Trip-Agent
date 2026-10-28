@@ -1,4 +1,4 @@
-using Planner.Core;
+﻿using Planner.Core;
 using Planner.Data;
 using Activity = Planner.Core.Activity;
 
@@ -78,6 +78,7 @@ Test("Windows protected key roundtrip keeps plaintext out of saved JSON",()=>{if
 Test("LLM selected inactive table supplies its name and editable occurrences only",()=>{var s=Weekly();s.Tables[0].Enabled=false;s.Tables.Add(new(){Id="private",Name="不授权的名称"});var scope=ScopeContext.Build(s,["work"],D(2),D(3));Equal(1,scope.Items.Count);Equal("工作",scope.Tables.Single().Name);Equal(false,scope.Tables.Single().Enabled);});
 
 BoardTests.Register(Test);
+FeatureUiTests.Register(Test);
 int failed=0;
 foreach(var (name,body) in tests) { try {body();Console.WriteLine("PASS "+name);}catch(Exception ex){failed++;Console.WriteLine("FAIL "+name+": "+ex.Message);} }
 Console.WriteLine($"RESULT {tests.Count-failed}/{tests.Count} passed");

@@ -2,11 +2,11 @@
 
 桌面端南京行程规划原型，界面借鉴「场记」的日程与票夹气质。Python 标准库实现，无需安装第三方包。
 
-## 本分支新增：WPF 看板整合版
+## 本分支：WPF 最新功能整合版
 
-`desktop-wpf/` 为 C# / WPF 端，采用本仓库月历与列表的视觉结构，保留原 WPF 的多表、周期和单日例外、冲突检查、地图和周课表能力。原 Python 入口与 AI 逻辑保持原样；两端数据独立。本次仅替换 WPF 中央看板，AI 对话整合留待后续任务。
+`desktop-wpf/` 为C#/WPF端，已合并feature/ui v1.12.9（978c678）并适配其紧凑编辑、时间选择、完成过滤、视图缓存和识别→完善→交通→确认流程；保留本地暖色风格、多表、周期、地图和提醒。周课表移除，点击月历日期空白添加，空库默认错落示例。Python原分支与WPF存储独立，不自动合并数据库。
 
-Windows 构建与使用见 [WPF 使用说明](desktop-wpf/README.md)，验证范围见 [验证记录](desktop-wpf/VERIFICATION.md)。设计与取舍见 [整合说明](docs/ui-board-integration.md)。当前工作分支为 `codex/ui-board-integration`。
+详见[WPF使用说明](desktop-wpf/README.md)、[本次验证](desktop-wpf/VERIFICATION.md)。旧版本已上传独立备份分支backup/local-wpf-20261028-90c1f61，本次开发分支codex/feature-ui-logic-20261028，不改main。
 
 ## 启动
 

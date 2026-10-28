@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Planner.Core;
@@ -6,6 +6,9 @@ using Planner.Core;
 namespace Planner.Data;
 public sealed class ServiceSettings
 {
+    public string AgentProvider {get;set;}="AUTO";
+    public string BailianRegion {get;set;}="北京";
+    public string BailianHost {get;set;}="";
     public string LlmEndpoint {get;set;}="";
     public string Model {get;set;}="";
     public string LlmKeyProtected {get;set;}="";

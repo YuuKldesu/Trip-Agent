@@ -1,4 +1,4 @@
-﻿param([string]$OutputDirectory = (Join-Path $PSScriptRoot '../output/南京行程表_看板整合版'), [string]$PackageDirectory = (Join-Path $PSScriptRoot '.packages'))
+﻿param([string]$OutputDirectory = (Join-Path $PSScriptRoot '../output/南京行程表_逻辑整合版_20261028'), [string]$PackageDirectory = (Join-Path $PSScriptRoot '.packages'))
 $ErrorActionPreference = 'Stop'
 $OutputDirectory=[IO.Path]::GetFullPath($OutputDirectory)
 Push-Location -LiteralPath $PSScriptRoot

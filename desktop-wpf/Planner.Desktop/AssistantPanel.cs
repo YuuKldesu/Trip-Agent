@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Planner.Core;
@@ -7,72 +7,36 @@ using Planner.Data;
 namespace Planner.Desktop;
 public partial class MainWindow
 {
-    ChangeDraft? assistantDraft;readonly HashSet<int> chosenOps=[];string assistantText="",assistantMessage="用一句话描述要做的事情，或选中活动后直接手动编辑。";CancellationTokenSource? assistantCancel;
-    readonly HashSet<string> scopeTables=[];DateOnly? scopeFrom,scopeUntil;bool futureRules,scopeInitialized;
+    string assistantText="",assistantMessage="描述要做的事，系统识别后可逐项完善；开始时间可以留空。";CancellationTokenSource? assistantCancel;AgentReviewWindow? agentReview;
     DispatcherTimer? reminderTimer;DateTime? reminderSince;bool notifying;
     partial void BuildAssistant(Panel host)
     {
-        EnsureReminders();var panel=new StackPanel();panel.Children.Add(Ui.Text("智能辅助填表",16,true));
-        if(!scopeInitialized){scopeTables.Add(vm.SelectedTableId);scopeInitialized=true;}
-        var selectedIds=scopeTables.ToArray();
-        foreach(var t in vm.State.Tables)
-        {
-            var c=new CheckBox{Content=t.Name,IsChecked=selectedIds.Contains(t.Id)};
-            c.Click+=(_,_)=>{if(c.IsChecked==true)scopeTables.Add(t.Id);else scopeTables.Remove(t.Id);assistantDraft=null;assistantCancel?.Cancel();};panel.Children.Add(c);
-        }
-        var from=new DatePicker{SelectedDate=(scopeFrom??vm.SelectedDate).ToDateTime(TimeOnly.MinValue)};var to=new DatePicker{SelectedDate=(scopeUntil??vm.SelectedDate).ToDateTime(TimeOnly.MinValue)};
-        from.SelectedDateChanged+=(_,_)=>{scopeFrom=from.SelectedDate is {} d?DateOnly.FromDateTime(d):null;assistantDraft=null;assistantCancel?.Cancel();};to.SelectedDateChanged+=(_,_)=>{scopeUntil=to.SelectedDate is {} d?DateOnly.FromDateTime(d):null;assistantDraft=null;assistantCancel?.Cancel();};
-        Ui.Field(panel,"读取日期 从",from);Ui.Field(panel,"至（含当日）",to);
-        var future=new CheckBox{Content="允许本次操作未来每周规则",IsChecked=futureRules};future.Click+=(_,_)=>{futureRules=future.IsChecked==true;assistantDraft=null;assistantCancel?.Cancel();};panel.Children.Add(future);
-        panel.Children.Add(Ui.Text("只发送勾选表在上述范围内的必要事项，不含备注。其他生效表仅在本地参与冲突检查。",11));
-        var input=new TextBox{Text=assistantText,Height=105,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};input.TextChanged+=(_,_)=>assistantText=input.Text;panel.Children.Add(input);
-        var generate=Ui.Button("生成待确认草稿",()=>{},true);generate.IsEnabled=assistantCancel is null;
+        EnsureReminders();var panel=new StackPanel();panel.Children.Add(Ui.Text("智能行程助手",16,true));panel.Children.Add(Ui.Text("描述需求 → 完善活动 → 选择交通 → 核对保存",11));
+        var input=new TextBox{Text=assistantText,Height=115,AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};input.TextChanged+=(_,_)=>assistantText=input.Text;panel.Children.Add(input);
+        var generate=Ui.Button("识别并完善行程",()=>{},true);generate.IsEnabled=assistantCancel is null&&agentReview is null;panel.Children.Add(generate);
         generate.Click+=async(_,_)=>
         {
-            if(assistantCancel is not null)return;
+            if(assistantCancel is not null||agentReview is not null)return;
             try
             {
-                if(string.IsNullOrWhiteSpace(input.Text))throw new ArgumentException("先描述要安排或修改的事项。");
-                var start=from.SelectedDate??throw new ArgumentException("请选择读取日期。");var end=to.SelectedDate??start;
-                var ids=scopeTables.ToArray();var snapshot=vm.State.Copy();var context=ScopeContext.Build(snapshot,ids,start.Date,end.Date.AddDays(1),futureRules);
-                assistantCancel=new();assistantMessage="正在生成草稿，可取消；尚未写入行程。";generate.IsEnabled=false;ShowDetails(null);
-                var reply=await new LlmClient().BuildAsync(new SettingsStore(vm.DataDirectory).Load(),assistantText,context,assistantCancel.Token);
-                assistantCancel.Token.ThrowIfCancellationRequested();
-                assistantDraft=new(snapshot.Revision,context,reply);chosenOps.Clear();for(int i=0;i<reply.Operations.Count;i++)chosenOps.Add(i);
-                assistantMessage=reply.Message.Length==0?(reply.Operations.Count==0?"请补充更具体的事项和时间。":"请核对每项变更，确认后才保存。 "):reply.Message;
+                if(string.IsNullOrWhiteSpace(assistantText))throw new ArgumentException("请先描述要安排的事项。");
+                assistantCancel=new();assistantMessage="正在识别活动，尚未修改行程。";ShowDetails(null);
+                var reply=await new RepositoryAgentClient().ExtractAsync(new SettingsStore(vm.DataDirectory).Load(),assistantText,assistantCancel.Token);assistantCancel.Token.ThrowIfCancellationRequested();
+                var review=new AgentReviewWindow(vm,reply){Owner=this};agentReview=review;review.Closed+=(_,_)=>{agentReview=null;assistantMessage="可以继续描述新需求，或点击日期空白手动添加。";ShowDetails(null);};review.Show();assistantMessage="请在完善行程窗口中核对活动，确认后才会保存。";
             }
-            catch(OperationCanceledException){assistantMessage="已取消请求，原有行程未改变。";}
-            catch(Exception ex){assistantMessage=ex.Message;assistantDraft=null;}
-            finally{assistantCancel?.Dispose();assistantCancel=null;ShowDetails(null);}
+            catch(OperationCanceledException){assistantMessage="已取消，原有行程未改变。";}
+            catch(Exception ex){assistantMessage=ex.Message;}
+            finally{assistantCancel?.Dispose();assistantCancel=null;if(IsLoaded)ShowDetails(null);}
         };
-        panel.Children.Add(generate);
-        if(assistantCancel is not null)panel.Children.Add(Ui.Button("取消请求",()=>assistantCancel?.Cancel()));
-        panel.Children.Add(Ui.Text(assistantMessage,12));
-        if(assistantDraft is { } draft)
-        {
-            panel.Children.Add(Ui.Text($"读取范围 {draft.Context.From:MM-dd}—{draft.Context.Until.AddDays(-1):MM-dd} · {draft.Reply.Operations.Count}项。实际修改范围以每项说明为准。",12,true));
-            for(int i=0;i<draft.Reply.Operations.Count;i++)
-            {
-                var index=i;string text;bool valid=true;
-                try{text=DraftService.Describe(vm.State,draft,index);}catch(Exception ex){text="本项未通过检查："+ex.Message;valid=false;chosenOps.Remove(index);}
-                var c=new CheckBox{Content=Ui.Text(text,12),IsChecked=chosenOps.Contains(index),IsEnabled=valid};c.Click+=(_,_)=>{if(c.IsChecked==true)chosenOps.Add(index);else chosenOps.Remove(index);};panel.Children.Add(c);
-            }
-            if(draft.Reply.Operations.Count>0)panel.Children.Add(Ui.Button("核对并写入选中变更",()=>
-            {
-                var commands=DraftService.Commands(vm.State,draft,chosenOps.Order());if(commands.Count==0)throw new ArgumentException("请至少选择一项操作。");
-                var next=ChangeService.Apply(vm.State,commands,draft.Revision);var conflicts=CalendarEngine.AllConflicts(next,draft.Context.From,draft.Context.Until);
-                var impact=string.Join("\n\n",chosenOps.Order().Select(i=>DraftService.Describe(vm.State,draft,i)));
-                if(!Ui.ConfirmReview($"将写入选中的 {commands.Count} 项变更。请核对实际影响，未来周期可能超出读取日期。\n\n{impact}\n\n本地检查：\n"+string.Join("\n",conflicts.Take(8).Select(x=>x.Message))))return;
-                assistantDraft=null;vm.Persist(next);assistantMessage="变更已保存。";ShowDetails(null);
-            },true));
-        }
-        host.Children.Add(Ui.Card(panel));
+        if(assistantCancel is not null)panel.Children.Add(Ui.Button("取消识别",()=>assistantCancel?.Cancel()));
+        panel.Children.Add(Ui.Text(assistantMessage,12));panel.Children.Add(Ui.Text("未配置模型时可用本地单项规则，例如：明天下午2点在南京博物院参观，2小时。",11));host.Children.Add(Ui.Card(panel));
     }
     partial void OpenSettings()
     {
         var store=new SettingsStore(vm.DataDirectory);var config=store.Load();var w=new Window{Title="服务设置",Width=650,Height=780,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner};var panel=new StackPanel{Margin=new(24)};w.Content=new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
         panel.Children.Add(Ui.Text("按需连接智能与地图服务",20,true));panel.Children.Add(Ui.Text("保存设置不会自动请求服务。密钥使用当前Windows用户保护，复制软件给他人时不附带Data目录。",12));
         var endpoint=Ui.Input(config.LlmEndpoint);var model=Ui.Input(config.Model);
+        string[] providers=["AUTO","LOCAL","CUSTOM","BAILIAN","DEEPSEEK"];var provider=Ui.Choices(["自动兼容旧设置","本地规则","自定义兼容接口","阿里云百炼","DeepSeek"],Math.Max(0,Array.IndexOf(providers,config.AgentProvider)));var region=Ui.Choices(["北京","新加坡"],config.BailianRegion=="新加坡"?1:0);var host=Ui.Input(config.BailianHost);Ui.Field(panel,"需求识别服务",provider);Ui.Field(panel,"百炼地域",region);Ui.Field(panel,"百炼业务空间API Host（可留空）",host);
         bool reset=false;
         PasswordBox Secret(string value){var text=SettingsStore.ReadForSettings(value);if(value.Length>0&&text.Length==0)reset=true;return new(){Password=text,Padding=new(9),Margin=new(0,3,0,10)};}
         var key=Secret(config.LlmKeyProtected);var web=Secret(config.MapServiceKeyProtected);var js=Secret(config.MapJsKeyProtected);var security=Secret(config.MapSecurityProtected);
@@ -84,8 +48,9 @@ public partial class MainWindow
         panel.Children.Add(Ui.Button("保存到本机",()=>
         {
             if(endpoint.Text.Trim().Length>0)_=LlmClient.Endpoint(endpoint.Text);
-            if(key.Password.Length>0&&(model.Text.Trim().Length==0||endpoint.Text.Trim().Length==0))throw new ArgumentException("填写LLM密钥时也应填写接口地址与模型名称。");
-            store.Save(new(){LlmEndpoint=endpoint.Text.Trim(),Model=model.Text.Trim(),LlmKeyProtected=SettingsStore.Protect(key.Password),MapServiceKeyProtected=SettingsStore.Protect(web.Password),MapJsKeyProtected=SettingsStore.Protect(js.Password),MapSecurityProtected=SettingsStore.Protect(security.Password),JsonMode=json.IsChecked==true});w.Close();vm.Notify("服务设置已保存；未发送网络请求");
+            if(providers[provider.SelectedIndex]=="BAILIAN")_=RepositoryAgentClient.BailianEndpoint(region.Text,host.Text);
+            if(providers[provider.SelectedIndex] is "AUTO" or "CUSTOM"&&key.Password.Length>0&&(model.Text.Trim().Length==0||endpoint.Text.Trim().Length==0))throw new ArgumentException("填写LLM密钥时也应填写接口地址与模型名称。");
+            store.Save(new(){AgentProvider=providers[provider.SelectedIndex],BailianRegion=region.Text,BailianHost=host.Text.Trim(),LlmEndpoint=endpoint.Text.Trim(),Model=model.Text.Trim(),LlmKeyProtected=SettingsStore.Protect(key.Password),MapServiceKeyProtected=SettingsStore.Protect(web.Password),MapJsKeyProtected=SettingsStore.Protect(js.Password),MapSecurityProtected=SettingsStore.Protect(security.Password),JsonMode=json.IsChecked==true});w.Close();vm.Notify("服务设置已保存；未发送网络请求");
         },true));w.ShowDialog();
     }
     void EnsureReminders()
@@ -105,5 +70,5 @@ public partial class MainWindow
             MessageBox.Show("软件关闭时不会发送提醒。今天此前有以下未提示事项，现汇总一次：\n\n"+string.Join("\n",missed.Take(12).Select(r=>$"{r.DueAt:HH:mm} · {r.Title}")),"今日提醒汇总",MessageBoxButton.OK,MessageBoxImage.Information);
         }));
     }
-    partial void OnClosedServices(){assistantCancel?.Cancel();reminderTimer?.Stop();}
+    partial void OnClosedServices(){assistantCancel?.Cancel();agentReview?.Close();reminderTimer?.Stop();}
 }
