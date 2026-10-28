@@ -8,7 +8,7 @@
 - Pre-flight: Task 1 full DateTime context is consumed by editor, agent review and cross-day board; preserve legacy nullable TimeEntry text for automatic start. Task 2 protocol/batch receipts consumed by task 4; batch writes must remain revision checked. Task 3 shell hosts task 4 as persistent panel to avoid losing typed content on refresh.
 - Baseline: core suite running before production changes; no product edits yet.
 - Task 1: pending.
-- Task 2: pending.
+- Task 2: RED 87/94 (missing conversation/protocol/receipt behavior), then RED 94/96 (explicit overnight and next-day generated constraints). GREEN 98/98, including HTTP fixture full branch history, local incremental guide, persistent branches, SQLite/restart pending receipt recovery, history optimistic concurrency, scoped undo/manual edits/new route protection. Fixed guidance prompt is production code in GuidedAgentClient.SystemPrompt. Explicit dated night/multi-day requests now plan against all touched days; automatic requests keep the existing 08:00—22:00 default.
 - Task 3: pending.
 - Task 4: pending.
 - Task 5: pending.
