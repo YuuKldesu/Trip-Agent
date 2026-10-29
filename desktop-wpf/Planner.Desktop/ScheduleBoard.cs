@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -190,7 +190,7 @@ public sealed class ScheduleBoard:Grid
     void Add(DateOnly date){SelectDay(date);AddRequested?.Invoke(date.ToDateTime(new(9,0)));}
     FrameworkElement TimelineRow(BoardEntry entry,Dictionary<string,List<Conflict>> conflicts)
     {
-        var row=new Grid{Margin=new(0,0,0,9)};row.ColumnDefinitions.Add(new(){Width=new(compact?66:94)});row.ColumnDefinitions.Add(new());var times=new StackPanel{Margin=new(4,12,4,10),VerticalAlignment=VerticalAlignment.Center};foreach(var t in new[]{Ui.Text(entry.Start.ToString("HH:mm"),compact?13:15,true),Ui.Text(entry.DayMinutes+" 分钟",11),Ui.Text(entry.TimeText.Split('—')[1],compact?13:15,true)}){t.HorizontalAlignment=HorizontalAlignment.Center;times.Children.Add(t);}row.Children.Add(new Border{CornerRadius=new(14),Background=Ui.Brush("#EEEDEB"),Child=times,Margin=new(0,0,8,0)});var card=ActivityCard(entry,true,conflicts);card.Margin=new(0);Grid.SetColumn(card,1);row.Children.Add(card);return row;
+        var row=new Grid{Margin=new(0,0,0,9)};row.ColumnDefinitions.Add(new(){Width=new(Math.Max(compact?66:94,58*Typography.Scale))});row.ColumnDefinitions.Add(new());var times=new StackPanel{Margin=new(4,12,4,10),VerticalAlignment=VerticalAlignment.Center};foreach(var t in new[]{Ui.Text(entry.Start.ToString("HH:mm"),compact?13:15,true),Ui.Text(entry.DayMinutes+" 分钟",11),Ui.Text(entry.TimeText.Split('—')[1],compact?13:15,true)}){t.HorizontalAlignment=HorizontalAlignment.Center;times.Children.Add(t);}row.Children.Add(new Border{CornerRadius=new(14),Background=Ui.Brush("#EEEDEB"),Child=times,Margin=new(0,0,8,0)});var card=ActivityCard(entry,true,conflicts);card.Margin=new(0);Grid.SetColumn(card,1);row.Children.Add(card);return row;
     }
     void BuildAgenda()
     {

@@ -26,7 +26,7 @@ public sealed class RouteWindow:Window
         Title="当天规划 · 地图与路线";Width=1320;Height=900;MinWidth=1040;MinHeight=700;WindowStartupLocation=WindowStartupLocation.CenterOwner;Background=Ui.Brush("#FBF7F0");FontFamily=new("Microsoft YaHei UI");FontSize=13;
         var root=new Grid{Margin=new(18)};root.ColumnDefinitions.Add(new(){Width=new(390)});root.ColumnDefinitions.Add(new());Content=root;
         var left=new StackPanel{Margin=new(0,0,18,0)};root.Children.Add(new ScrollViewer{Content=left,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
-        left.Children.Add(Ui.Text("把这一天串起来",23,true));date=new(){SelectedDate=vm.SelectedDate.ToDateTime(TimeOnly.MinValue)};Ui.Field(left,"规划日期",date);
+        left.Children.Add(Ui.Text("把这一天串起来",23,true));date=new StyledDateEntry{SelectedDate=vm.SelectedDate.ToDateTime(TimeOnly.MinValue)};Ui.Field(left,"规划日期",date);
         Ui.Field(left,"出发点（须选择搜索结果）",originText);left.Children.Add(Ui.Button("搜索南京市内地点",()=>SearchOrigin()));left.Children.Add(originList);Ui.Field(left,"最早出发时间 HH:mm",earliest);
         left.Children.Add(Ui.Text("交通方式（可混合）",14,true));var row=new WrapPanel();foreach(var mode in new[]{"WALK","BIKE","BUS","METRO","CAR","TAXI"}){var box=new CheckBox{Content=AmapClient.Name(mode),IsChecked=mode is "WALK" or "BUS" or "METRO",Margin=new(0,4,15,8)};modes[mode]=box;row.Children.Add(box);}left.Children.Add(row);
         left.Children.Add(Ui.Text("公交与地铁包含必要的接驳步行；“步行”勾选项允许另选全程步行方案。",11));

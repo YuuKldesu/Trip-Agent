@@ -18,7 +18,7 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
 4. 不虚构坐标、价格、拥挤程度、营业/预约状态或真实路程；准确地点和交通由软件之后查询并由用户确认。不同活动分别提取，不丢失用户的限制，完整限制写入summary与对应notes。
 5. 活动按用户期望顺序，最多15项，duration为1—10080整数分钟；返程is_return=true允许duration=0。跨日必须明确end_day（YYYY-MM-DD），且duration要包含跨越天数。不猜测午夜归属；不明确时继续询问。
 6. 只输出一个JSON对象，不能使用Markdown围栏外的说明。结构：message(当前自然语言回答或追问)，summary(全部已确认需求的摘要)，missing(缺失关键项名称数组)，ready(布尔)，events(活动数组)。
-7. events每项字段：day(YYYY-MM-DD或null)、end_day(明确结束日期或null)、title(完整名称)、location(地点关键词)、duration(整数分钟或null)、start(当天午夜起分钟或null)、end(结束日期当天午夜起分钟或null)、earliest(当天最早分钟或null)、latest_end(相对开始日期午夜的最晚结束分钟或null)、notes(活动限制及提醒偏好)、mode_in(公交/步行/骑行/驾车或null)、is_return(布尔)。不提供内部ID或修改操作。
+7. events每项字段：day(YYYY-MM-DD或null)、end_day(明确结束日期或null)、title(1—100字完整名称)、location(地点关键词)、duration(整数分钟或null)、start(当天午夜起分钟或null)、end(结束日期当天午夜起分钟或null)、earliest(当天最早分钟或null)、latest_end(相对开始日期午夜的最晚结束分钟或null)、notes(活动限制及提醒偏好)、mode_in(公交/步行/骑行/驾车或null)、is_return(布尔)、reminder_enabled(用户明确要提醒时true)、reminder_lead_min(提前分钟0—10080，默认15)。不提供内部ID或修改操作。
 8. 只有关键项足够且用户已选定建议时ready=true、missing=[]，汇总并说明需核对。否则ready=false并继续问；不能把未完成信息交给用户自己填表作为默认结束。用户要求先看草稿时，明确指出待确认项，ready仍为false。
 """;
     public static bool IsLocal(ServiceSettings config)=>config.AgentProvider=="LOCAL"||(config.AgentProvider=="AUTO"&&string.IsNullOrWhiteSpace(config.LlmEndpoint));
@@ -54,6 +54,6 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
         if(!Regex.IsMatch(text,@"\d+(?:\.\d+)?\s*(?:个?小时|分钟)"))missing.Add("每项耗时");
         var reply=new GuidedReply{Summary=string.Join("；",messages.Where(m=>m.Role=="user").Select(m=>m.Content)),Missing=missing};
         if(missing.Count>0){reply.Message=missing[0]=="日期"?"这次具体安排在哪一天？例如明天，或写明年月日。":missing[0]=="具体地点和事项"?"日期我记住了。接下来想去哪里、做什么？可以说“在南京博物院参观”。":"地点和事项已记住。预计需要多久？例如2小时；如果还有其他事项，也可以一起补充。";return reply;}
-        try{reply.Events=[RepositoryAgentClient.ParseLocal(text,today)];reply.Ready=true;reply.Message="信息已足够安排这一项活动。请核对需求汇总，再生成草稿；具体地点与交通将在下一步确认。";}catch(ArgumentException e){reply.Missing=["需要进一步确认的活动细节"];reply.Message="本地规则暂不能可靠理解这组安排。"+e.Message+"你可以把单项活动的日期、地点和耗时补充清楚，或在设置中连接模型以继续多项行程对话。";}return reply;
+        try{var request=RepositoryAgentClient.ParseLocal(text,today);request.Notes=text;var modes=Regex.Matches(text,"公交|地铁|步行|骑行|自驾|驾车|打车").Select(m=>m.Value switch{"地铁"=>"公交","自驾" or "打车"=>"驾车",_=>m.Value}).Distinct().ToList();if(modes.Count==1)request.ModeIn=modes[0];var reminder=Regex.Matches(text,@"不要提醒|无需提醒|不提醒|提前\s*(\d+)\s*分钟提醒|需要提醒|提醒我").LastOrDefault();if(reminder is not null){request.ReminderEnabled=!Regex.IsMatch(reminder.Value,"不要|无需|不提醒");if(reminder.Groups[1].Success)request.ReminderLeadMin=int.Parse(reminder.Groups[1].Value);}RepositoryPlanner.Validate(request);reply.Events=[request];reply.Ready=true;reply.Message="信息已足够安排这一项活动。请核对需求汇总，再生成草稿；具体地点与交通将在下一步确认。";}catch(ArgumentException e){reply.Missing=["需要进一步确认的活动细节"];reply.Message="本地规则暂不能可靠理解这组安排。"+e.Message+"你可以把单项活动的日期、地点和耗时补充清楚，或在设置中连接模型以继续多项行程对话。";}return reply;
     }
 }

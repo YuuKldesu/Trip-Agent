@@ -11,7 +11,7 @@ public static class ShellIcons
     public static TextBlock Glyph(string value,double size=20)=>new(){Text=value,FontFamily=new("Segoe MDL2 Assets"),FontSize=size,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Center};
     public static Button Button(string glyph,string label,Action click,string tag,bool expanded=false)
     {
-        var row=new StackPanel{Orientation=Orientation.Horizontal};row.Children.Add(Glyph(glyph));if(expanded)row.Children.Add(new TextBlock{Text=label,Margin=new(12,0,0,0),VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap});var b=Ui.Button("",click);b.Content=row;b.Tag=tag;b.ToolTip=label;b.MinHeight=44;b.Padding=new(12,10,12,10);b.HorizontalContentAlignment=HorizontalAlignment.Left;AutomationProperties.SetName(b,label);return b;
+        var row=new StackPanel{Orientation=Orientation.Horizontal};row.Children.Add(Glyph(glyph));if(expanded)row.Children.Add(new TextBlock{Text=label,Margin=new(12,0,0,0),VerticalAlignment=VerticalAlignment.Center,TextWrapping=TextWrapping.Wrap,MaxWidth=126});var b=Ui.Button("",click);b.Content=row;b.Tag=tag;b.ToolTip=label;b.MinHeight=44;b.Padding=new(12,10,12,10);b.HorizontalContentAlignment=HorizontalAlignment.Left;AutomationProperties.SetName(b,label);return b;
     }
 }
 public sealed class TableColorPicker:WrapPanel

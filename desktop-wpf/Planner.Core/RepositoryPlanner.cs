@@ -14,6 +14,8 @@ public sealed class TripRequest
     public string Notes {get;set;}="";
     public string? ModeIn {get;set;}
     public bool IsReturn {get;set;}
+    public bool ReminderEnabled {get;set;}
+    public int ReminderLeadMin {get;set;}=15;
 }
 public sealed record PreparedTrip(TripRequest Request,Place Place);
 public sealed record TravelEstimate(int Minutes,string Source);
@@ -26,7 +28,7 @@ public static class RepositoryPlanner
     sealed record Busy(int Start,int End,Place? Place,string Title);
     public static void Validate(TripRequest r)
     {
-        if(r.Day is null||string.IsNullOrWhiteSpace(r.Title)||string.IsNullOrWhiteSpace(r.Location)||r.Title.Length>200||r.Duration is null||r.Duration<(r.IsReturn?0:1)||r.Duration>10080||r.Start is <0 or >=1440||r.Earliest is <0 or >1440||r.LatestEnd is <0 or >11520||r.End is <0 or >1440)
+        if(r.Day is null||string.IsNullOrWhiteSpace(r.Title)||string.IsNullOrWhiteSpace(r.Location)||r.Title.Length>100||r.Duration is null||r.Duration<(r.IsReturn?0:1)||r.Duration>10080||r.Start is <0 or >=1440||r.Earliest is <0 or >1440||r.LatestEnd is <0 or >11520||r.End is <0 or >1440||r.ReminderLeadMin is <0 or >10080)
             throw new ArgumentException("请完善日期、活动、地点及1—10080分钟的耗时；返程可为0分钟。");
         if(r.EndDay is {} endDay){if(r.Start is null||r.End is null)throw new ArgumentException("跨日活动请明确起止日期和时间。");int duration=(endDay.DayNumber-r.Day.Value.DayNumber)*1440+r.End.Value-r.Start.Value;if(duration!=r.Duration||duration<(r.IsReturn?0:1))throw new ArgumentException("跨日起止时间与耗时不一致，请重新核对。");}
     }
@@ -69,6 +71,6 @@ public static class RepositoryPlanner
         // Arrival-only markers occupy one minute in the existing nonzero-duration storage model.
         var duration=Math.Max(1,r.Duration!.Value);var note=r.Notes+(r.IsReturn?"\n返程到达标记（存储占1分钟）":"");
         if(row.PreviousTitle is not null)note+=$"\n前往方式：{row.Before.Source}，约{row.Before.Minutes}分钟";
-        return new EditCommand{Activity=new(){TableId=tableId,Title=r.Title,StartAt=begin,EndAt=begin.AddMinutes(duration),DurationMin=duration,Note=note.Trim()},Place=row.Trip.Place};
+        return new EditCommand{Activity=new(){TableId=tableId,Title=r.Title,StartAt=begin,EndAt=begin.AddMinutes(duration),DurationMin=duration,Note=note.Trim()},Place=row.Trip.Place,ReminderEnabled=r.ReminderEnabled,ReminderLeadMin=r.ReminderLeadMin};
     }).ToList();
 }

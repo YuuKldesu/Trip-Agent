@@ -5,6 +5,7 @@ namespace Planner.Desktop;
 public static class Typography
 {
     static readonly HashSet<double> sizes=[];static double current=14;
+    public static double Scale=>current/13;
     static string Key(double nominal)=>"Planner.Font."+nominal.ToString(CultureInfo.InvariantCulture);
     public static void Set(FrameworkElement target,double nominal)
     {

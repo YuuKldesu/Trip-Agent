@@ -15,14 +15,15 @@ static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        if(args.Length!=1)return 2;string directory=Path.GetFullPath(args[0]);Directory.CreateDirectory(directory);if(File.Exists(Path.Combine(directory,"planner.db")))throw new InvalidOperationException("需要新的隔离检查目录。");
+        if(args.Length is <1 or >2)return 2;string directory=Path.GetFullPath(args[0]);Directory.CreateDirectory(directory);if(File.Exists(Path.Combine(directory,"planner.db")))throw new InvalidOperationException("需要新的隔离检查目录。");
         var log=new List<string>();var app=new App();app.InitializeComponent();app.ShutdownMode=ShutdownMode.OnExplicitShutdown;var vm=new PlannerViewModel(directory,false);vm.FocusDate(new(2026,10,27));Seed(vm);
         var main=new MainWindow(vm);app.MainWindow=main;main.Show();int code=1;var frame=new DispatcherFrame();
         Dispatcher.CurrentDispatcher.BeginInvoke(async()=>
         {
             try
             {
-                await DateTimeChecks.Run(main,vm,Check);
+                if(args.Contains("--guided-only")){await GuidedAssistantChecks.Run(main,directory,Check);code=0;return;}
+                await DateTimeChecks.Run(main,vm,directory,Check);
                 await Task.Delay(250);var board=Walk(main).OfType<ScheduleBoard>().Single();Check(board.ViewMode=="MONTH","默认打开整月看板");
                 Check(Texts(board).Contains("行程看板")&&Texts(board).Contains("周一")&&Texts(board).Contains("周日"),"月历标题和七天表头可见");
                 Check(Texts(board).Any(t=>t.Contains("09:00—18:00")),"长时工作以紧凑卡片显示时间");Capture(main,Path.Combine(directory,"month.png"));
@@ -58,7 +59,7 @@ static class Program
                 var weeklyEditor=new EditorWindow(vm,null,new DateTime(2026,11,21,9,0,0)){Owner=main};weeklyEditor.Show();await Task.Delay(30);Walk(weeklyEditor).OfType<TextBox>().First(t=>Equals(t.Tag,"ActivityTitle")).Text="周期冲突测试";Walk(weeklyEditor).OfType<ComboBox>().First(c=>c.Items.Cast<object>().Any(i=>Equals(i,"每周重复"))).SelectedIndex=1;Walk(weeklyEditor).OfType<CheckBox>().First(c=>Equals(c.Content,"六")).IsChecked=true;FindButton(weeklyEditor,"保存行程").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Task.Delay(70);Regression(!vm.State.Activities.Any(a=>a.Title=="周期冲突测试"),"新增周期不能绕过时间冲突拦截");weeklyEditor.Close();
                 var batch=new AgentReviewWindow(vm,[new(){Title="流程保存测试A",Location="南京博物院",Day=new(2026,11,22),Duration=60,Start=600},new(){Title="流程保存测试B",Location="南京博物院",Day=new(2026,11,22),Duration=60}]){Owner=main};batch.Show();await Task.Delay(40);foreach(var search in Walk(batch).OfType<Button>().Where(b=>Equals(b.Content,"搜索地点")).ToArray())search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Task.Delay(50);FindButton(batch,"生成行程 →").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));for(int retry=0;retry<40&&!vm.State.Activities.Any(a=>a.Title=="流程保存测试B");retry++)await Task.Delay(50);acceptTimer.Stop();Check(vm.State.Activities.Count(a=>a.Title.StartsWith("流程保存测试"))==2&&new PlannerViewModel(directory,false).State.Activities.Count(a=>a.Title.StartsWith("流程保存测试"))==2,"完善活动搜索地点交通选择预览批量保存贯通");if(batch.IsVisible)batch.Close();
                 var freshDir=Path.Combine(directory,"fresh");var fresh=new PlannerViewModel(freshDir);Check(fresh.State.Activities.Count>=15,"首次空库自动载入错落示例");var firstCount=fresh.State.Activities.Count;fresh.Edit([new(){Activity=new(){TableId=fresh.SelectedTableId,Title="自定义保留",StartAt=new(2026,11,20,10,0,0),EndAt=new(2026,11,20,11,0,0)}}]);Check(new PlannerViewModel(freshDir).State.Activities.Count==firstCount+1,"重启不覆盖或重复示例及自定义活动");var demoWindow=new MainWindow(fresh);demoWindow.Show();await Task.Delay(120);Capture(demoWindow,Path.Combine(directory,"demo-month.png"));demoWindow.Close();
-                Check(regressions,"最终审阅回归全部通过");await SoftWindowChecks.Run(main,vm,board,directory,Check);code=0;
+                Check(regressions,"最终审阅回归全部通过");await SoftWindowChecks.Run(main,vm,board,directory,Check);await GuidedAssistantChecks.Run(main,directory,Check);code=0;
             }
             catch(Exception ex){log.Add("FAIL "+ex);}
             finally{File.WriteAllLines(Path.Combine(directory,"board-checks.txt"),log);main.Close();frame.Continue=false;app.Shutdown(code);}

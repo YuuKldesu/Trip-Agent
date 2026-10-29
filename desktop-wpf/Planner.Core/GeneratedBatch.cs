@@ -7,6 +7,7 @@ public sealed class GeneratedBatchReceipt:Entity
     public string Status {get;set;}="APPLIED";
     public DateTime CreatedAt {get;set;}=Clock.Now;
     public long ExpectedRevision {get;set;}
+    public long SourceVersion {get;set;}
     public List<Activity> Activities {get;set;}=[];
     public List<ScheduleTable> Tables {get;set;}=[];
     public List<Place> Places {get;set;}=[];
@@ -35,6 +36,6 @@ public static class GeneratedBatchService
     }
     public static void Reconcile(PlannerState state,GeneratedBatchReceipt receipt)
     {
-        if(receipt.Status!="PENDING")return;int present=receipt.Activities.Count(a=>state.Activities.Any(x=>x.Id==a.Id));receipt.Status=present==receipt.Activities.Count?"APPLIED":present==0?"NOT_APPLIED":"CONFLICT";
+        if(receipt.Status is not("PENDING" or "UNDO_PENDING"))return;bool undo=receipt.Status=="UNDO_PENDING";int present=receipt.Activities.Count(a=>state.Activities.Any(x=>x.Id==a.Id));receipt.Status=present==receipt.Activities.Count?"APPLIED":present==0?undo?"UNDONE":"NOT_APPLIED":"CONFLICT";
     }
 }

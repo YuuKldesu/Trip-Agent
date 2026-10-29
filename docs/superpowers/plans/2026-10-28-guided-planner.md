@@ -59,6 +59,7 @@
 
 ## Task 5: Native regression, review and runnable delivery
 **Files:** Update `Planner.BoardChecks`, `README.md`, `desktop-wpf/README.md`, `VERIFICATION.md`, build output and progress ledger.
+- [ ] Implement user-added native borderless `AppChrome` for application windows and verify caption controls, usable work area and resizing.
 - [ ] Run full domain suite and real WPF interaction suite; inspect screenshots of shell, settings, timeline, both picker popups, dialogs and compact 320px/22px font.
 - [ ] Publish self-contained Windows executable to a new output directory, retain all old packages/private data, extract archive into a clean directory and smoke-start independently.
 - [ ] Have a fresh reviewer inspect the entire branch against spec and ledger; fix important findings with reproducing behavior tests, run suites once more.

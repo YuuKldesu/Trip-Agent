@@ -29,29 +29,30 @@ public sealed class StyledDateEntry:DatePicker
         actions.Children.Add(Ui.Button("今天",()=>{calendar.DisplayDate=Clock.Now;calendar.SelectedDate=Clock.Today.ToDateTime(TimeOnly.MinValue);}));actions.Children.Add(Ui.Button("清除",()=>{SelectedDate=null;picker!.IsOpen=false;}));actions.Children.Add(Ui.Button("取消",()=>picker!.IsOpen=false));actions.Children.Add(Ui.Button("确定日期",()=>{SelectedDate=calendar.SelectedDate;picker!.IsOpen=false;},true));
         picker=MakePopup(PlacementAnchor??this,panel);picker.IsOpen=true;
     }
-    internal static Popup MakePopup(FrameworkElement target,UIElement child)=>new(){PlacementTarget=target,Placement=PlacementMode.Bottom,StaysOpen=false,AllowsTransparency=true,Child=new Border{Background=Ui.Brush("#FFFDF9"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(1),CornerRadius=new(17),Padding=new(14),Child=child}};
+    internal static Popup MakePopup(FrameworkElement target,UIElement child)=>new(){PlacementTarget=target,Placement=PlacementMode.Bottom,StaysOpen=false,AllowsTransparency=true,Child=new Border{Background=Ui.Brush("#FFFDF9"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(1),CornerRadius=new(17),Padding=new(14),Child=new ScrollViewer{Content=child,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,MaxHeight=Math.Max(200,SystemParameters.WorkArea.Height-64)}}};
 }
 
 public sealed class TimeWheel:Border
 {
     readonly bool hours;readonly Func<DateTime> current;readonly Action<DateTime> changed;readonly StackPanel rows=new();Point anchor;double residual;bool dragging,moved;TouchDevice? touch;
+    double RowHeight=>Math.Max(44,Math.Ceiling(36*Typography.Scale));
     public TimeWheel(bool hours,Func<DateTime> current,Action<DateTime> changed)
     {
         this.hours=hours;this.current=current;this.changed=changed;Width=100;Height=220;Child=rows;Background=Brushes.Transparent;Focusable=true;Refresh();
         PreviewMouseWheel+=(_,e)=>{RollBy(e.Delta>0?-1:1);e.Handled=true;};
         PreviewMouseLeftButtonDown+=(_,e)=>{if(e.StylusDevice is not null)return;anchor=e.GetPosition(this);residual=0;moved=false;dragging=true;CaptureMouse();Focus();e.Handled=true;};
         PreviewMouseMove+=(_,e)=>{if(!dragging||e.LeftButton!=MouseButtonState.Pressed)return;Drag(e.GetPosition(this));e.Handled=true;};
-        PreviewMouseLeftButtonUp+=(_,e)=>{if(!dragging)return;dragging=false;if(!moved)RollBy(Math.Clamp((int)(e.GetPosition(this).Y/44)-2,-2,2));ReleaseMouseCapture();e.Handled=true;};LostMouseCapture+=(_,_)=>dragging=false;
+        PreviewMouseLeftButtonUp+=(_,e)=>{if(!dragging)return;dragging=false;if(!moved)RollBy(Math.Clamp((int)(e.GetPosition(this).Y/RowHeight)-2,-2,2));ReleaseMouseCapture();e.Handled=true;};LostMouseCapture+=(_,_)=>dragging=false;
         PreviewTouchDown+=(_,e)=>{touch=e.TouchDevice;anchor=e.GetTouchPoint(this).Position;residual=0;moved=false;CaptureTouch(touch);e.Handled=true;};
         PreviewTouchMove+=(_,e)=>{if(touch!=e.TouchDevice)return;Drag(e.GetTouchPoint(this).Position);e.Handled=true;};
-        PreviewTouchUp+=(_,e)=>{if(touch!=e.TouchDevice)return;if(!moved)RollBy(Math.Clamp((int)(e.GetTouchPoint(this).Position.Y/44)-2,-2,2));ReleaseTouchCapture(touch);touch=null;e.Handled=true;};LostTouchCapture+=(_,_)=>touch=null;
+        PreviewTouchUp+=(_,e)=>{if(touch!=e.TouchDevice)return;if(!moved)RollBy(Math.Clamp((int)(e.GetTouchPoint(this).Position.Y/RowHeight)-2,-2,2));ReleaseTouchCapture(touch);touch=null;e.Handled=true;};LostTouchCapture+=(_,_)=>touch=null;
         PreviewKeyDown+=(_,e)=>{if(e.Key is Key.Up or Key.Down){RollBy(e.Key==Key.Up?-1:1);e.Handled=true;}};
     }
-    void Drag(Point point){double delta=point.Y-anchor.Y;if(Math.Abs(delta)>5)moved=true;residual-=delta;anchor=point;int steps=(int)(residual/44);if(steps!=0){residual-=steps*44;RollBy(steps);}}
+    void Drag(Point point){double delta=point.Y-anchor.Y;if(Math.Abs(delta)>5)moved=true;residual-=delta;anchor=point;int steps=(int)(residual/RowHeight);if(steps!=0){residual-=steps*RowHeight;RollBy(steps);}}
     public void RollBy(int steps){if(steps!=0)Ui.Safe(()=>changed(DateTimeSelection.Roll(current(),hours,steps)));}
     public void Refresh()
     {
-        rows.Children.Clear();var value=current();for(int i=-2;i<=2;i++){int delta=i;DateTime candidate;try{candidate=DateTimeSelection.Roll(value,hours,i);}catch(ArgumentException){candidate=value;}var b=Ui.Button((hours?candidate.Hour:candidate.Minute).ToString("00"),()=>RollBy(delta));b.Height=44;b.MinHeight=44;b.Margin=new(0);b.Padding=new(0);b.Background=Ui.Brush(i==0?"#F0E3D5":"#FFFDF9");b.Foreground=Ui.Brush(i==0?"#8E5339":"#8C7F73");Typography.Set(b,i==0?28:21);b.Opacity=Math.Abs(i)==2?.35:i==0?1:.7;rows.Children.Add(b);}
+        rows.Children.Clear();Height=RowHeight*5;var value=current();for(int i=-2;i<=2;i++){int delta=i;DateTime candidate;try{candidate=DateTimeSelection.Roll(value,hours,i);}catch(ArgumentException){candidate=value;}var b=Ui.Button((hours?candidate.Hour:candidate.Minute).ToString("00"),()=>RollBy(delta));b.Height=RowHeight;b.MinHeight=RowHeight;b.Margin=new(0);b.Padding=new(0);b.Background=Ui.Brush(i==0?"#F0E3D5":"#FFFDF9");b.Foreground=Ui.Brush(i==0?"#8E5339":"#8C7F73");Typography.Set(b,i==0?28:21);b.Opacity=Math.Abs(i)==2?.35:i==0?1:.7;rows.Children.Add(b);}
     }
 }
 
