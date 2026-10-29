@@ -1,3 +1,4 @@
+> Windows桌面版已更新为“引导对话与无边框版”（2026-10-29）：左侧导航/行程表、右侧连续对话、独立设置、循环日期时间选择、跨日片段、12色归属及按批次撤回。运行与数据说明见 [desktop-wpf/README.md](desktop-wpf/README.md)，验证记录见 [desktop-wpf/VERIFICATION.md](desktop-wpf/VERIFICATION.md)。下面保留原合作方 Python/Web 版本说明。
 # 南京行程 Agent
 
 桌面端南京行程规划原型，界面借鉴「场记」的日程与票夹气质。Python 标准库实现，无需安装第三方包。

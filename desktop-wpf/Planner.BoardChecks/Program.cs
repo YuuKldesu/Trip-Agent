@@ -23,6 +23,7 @@ static class Program
             try
             {
                 if(args.Contains("--guided-only")){await GuidedAssistantChecks.Run(main,directory,Check);code=0;return;}
+                await ChromeChecks.Run(main,Check);
                 await DateTimeChecks.Run(main,vm,directory,Check);
                 await Task.Delay(250);var board=Walk(main).OfType<ScheduleBoard>().Single();Check(board.ViewMode=="MONTH","默认打开整月看板");
                 Check(Texts(board).Contains("行程看板")&&Texts(board).Contains("周一")&&Texts(board).Contains("周日"),"月历标题和七天表头可见");

@@ -8,6 +8,7 @@ using Planner.Core;
 namespace Planner.Desktop;
 public partial class App : Application
 {
+    public App(){EventManager.RegisterClassHandler(typeof(Window),FrameworkElement.LoadedEvent,new RoutedEventHandler((sender,e)=>{if(sender is Window window&&ReferenceEquals(e.OriginalSource,window))AppChrome.Attach(window);}));}
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
