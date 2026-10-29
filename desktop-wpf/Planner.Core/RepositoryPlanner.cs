@@ -1,4 +1,4 @@
-﻿namespace Planner.Core;
+namespace Planner.Core;
 
 public sealed class TripRequest
 {
@@ -18,14 +18,14 @@ public sealed class TripRequest
     public int ReminderLeadMin {get;set;}=15;
 }
 public sealed record PreparedTrip(TripRequest Request,Place Place);
-public sealed record TravelEstimate(int Minutes,string Source);
-public sealed record PlannedTrip(PreparedTrip Trip,int Start,TravelEstimate Before,TravelEstimate After,string? PreviousTitle,string? NextTitle);
+public sealed record TravelEstimate(int Minutes,string Source){public RouteOption? Option {get;init;}};
+public sealed record PlannedTrip(PreparedTrip Trip,int Start,TravelEstimate Before,TravelEstimate After,string? PreviousTitle,string? NextTitle){public string ActivityId {get;init;}=Guid.NewGuid().ToString("N");public string? PreviousActivityId {get;init;}public DateOnly? PreviousOriginDate {get;init;}public DateTime? TravelDepartAt {get;init;}};
 public sealed record RepositoryPlan(long Revision,IReadOnlyList<PlannedTrip> Rows);
 
 // Port of app.py plan/plan_prepared: fixed existing events, ordered first feasible gap.
 public static class RepositoryPlanner
 {
-    sealed record Busy(int Start,int End,Place? Place,string Title);
+    sealed record Busy(int Start,int End,Place? Place,string Title,string ActivityId,DateOnly? OriginDate);
     public static void Validate(TripRequest r)
     {
         if(r.Day is null||string.IsNullOrWhiteSpace(r.Title)||string.IsNullOrWhiteSpace(r.Location)||r.Title.Length>100||r.Duration is null||r.Duration<(r.IsReturn?0:1)||r.Duration>10080||r.Start is <0 or >=1440||r.Earliest is <0 or >1440||r.LatestEnd is <0 or >11520||r.End is <0 or >1440||r.ReminderLeadMin is <0 or >10080)
@@ -39,7 +39,7 @@ public static class RepositoryPlanner
         foreach(var item in requests)
         {
             token.ThrowIfCancellationRequested();var e=item.Request;Validate(e);var day=e.Day!.Value;int duration=Math.Max(1,e.Duration!.Value);
-            var begin=day.ToDateTime(TimeOnly.MinValue);var horizon=begin.AddMinutes((e.Start??480)+duration).Date.AddDays(1);var existing=CalendarEngine.Expand(working,begin,horizon).Where(o=>o.Key!=excludeKey).Select(o=>new Busy((int)(o.Start-begin).TotalMinutes,(int)(o.End-begin).TotalMinutes,working.Places.FirstOrDefault(p=>p.Id==o.PlaceId),o.Title)).OrderBy(o=>o.Start).ToList();
+            var begin=day.ToDateTime(TimeOnly.MinValue);var horizon=begin.AddMinutes((e.Start??480)+duration).Date.AddDays(1);var existing=CalendarEngine.Expand(working,begin,horizon).Where(o=>o.Key!=excludeKey).Select(o=>new Busy((int)(o.Start-begin).TotalMinutes,(int)(o.End-begin).TotalMinutes,working.Places.FirstOrDefault(p=>p.Id==o.PlaceId),o.Title,o.Activity.Id,o.OriginDate)).OrderBy(o=>o.Start).ToList();
             int baseStart=e.Start is not null?0:480,finishLimit=e.Start is {} fixedAt?fixedAt+duration:1320;
             int ordered=Math.Max(e.Earliest??0,previousNew.GetValueOrDefault(day));PlannedTrip? found=null;
             for(int i=0;i<=existing.Count;i++)
@@ -58,10 +58,10 @@ public static class RepositoryPlanner
                 var after=next is null?new TravelEstimate(0,"无后续行程"):await Leg(item.Place,next.Place,null,(e.Start??low)+duration);
                 high=Math.Min(high,(next?.Start??finishLimit)-duration-after.Minutes);
                 int candidate=e.Start??low;if(candidate<low||candidate>high)continue;
-                found=new(item,candidate,before,after,prev?.Title,next?.Title);break;
+                found=new(item,candidate,before,after,prev?.Title,next?.Title){PreviousActivityId=prev?.ActivityId,PreviousOriginDate=prev?.OriginDate,TravelDepartAt=prev is null?null:begin.AddMinutes(prev.End)};break;
             }
             if(found is null)throw new ArgumentException($"“{e.Title}”无法在指定时间与已有活动及交通之间安排；未指定开始时间时默认在08:00—22:00寻找空档。");
-            rows.Add(found);if(!working.Places.Any(p=>p.Id==item.Place.Id))working.Places.Add(JsonKit.Clone(item.Place));working.Activities.Add(new(){TableId=provisional.Id,Title=e.Title,PlaceId=item.Place.Id,StartAt=begin.AddMinutes(found.Start),EndAt=begin.AddMinutes(found.Start+duration),DurationMin=duration});previousNew[day]=found.Start+duration;
+            rows.Add(found);if(!working.Places.Any(p=>p.Id==item.Place.Id))working.Places.Add(JsonKit.Clone(item.Place));working.Activities.Add(new(){Id=found.ActivityId,TableId=provisional.Id,Title=e.Title,PlaceId=item.Place.Id,StartAt=begin.AddMinutes(found.Start),EndAt=begin.AddMinutes(found.Start+duration),DurationMin=duration});previousNew[day]=found.Start+duration;
         }
         return new(state.Revision,rows);
     }
@@ -71,6 +71,6 @@ public static class RepositoryPlanner
         // Arrival-only markers occupy one minute in the existing nonzero-duration storage model.
         var duration=Math.Max(1,r.Duration!.Value);var note=r.Notes+(r.IsReturn?"\n返程到达标记（存储占1分钟）":"");
         if(row.PreviousTitle is not null)note+=$"\n前往方式：{row.Before.Source}，约{row.Before.Minutes}分钟";
-        return new EditCommand{Activity=new(){TableId=tableId,Title=r.Title,StartAt=begin,EndAt=begin.AddMinutes(duration),DurationMin=duration,Note=note.Trim()},Place=row.Trip.Place,ReminderEnabled=r.ReminderEnabled,ReminderLeadMin=r.ReminderLeadMin};
+        return new EditCommand{Activity=new(){Id=row.ActivityId,TableId=tableId,Title=r.Title,StartAt=begin,EndAt=begin.AddMinutes(duration),DurationMin=duration,Note=note.Trim()},Place=row.Trip.Place,ReminderEnabled=r.ReminderEnabled,ReminderLeadMin=r.ReminderLeadMin};
     }).ToList();
 }

@@ -166,8 +166,9 @@ public sealed class ScheduleBoard:Grid
         DateOnly date=listHeadings[0].Date;foreach(var item in listHeadings){if(item.Heading.TranslatePoint(new(0,0),panel).Y<=scroll.VerticalOffset+8)date=item.Date;else break;}
         listVisibleDate=date;caption.Content=$"{date:yyyy年M月d日}";
     }
-    SwipeActivityCard ActivityCard(BoardEntry entry,bool list,Dictionary<string,List<Conflict>> conflicts)
+    FrameworkElement ActivityCard(BoardEntry entry,bool list,Dictionary<string,List<Conflict>> conflicts)
     {
+        if(entry.Transfer is {} transfer){var traffic=new StackPanel();traffic.Children.Add(Ui.Text("交通安排 · "+entry.TimeText,12,true));traffic.Children.Add(Ui.Text(entry.Occurrence.Title,14,true));traffic.Children.Add(Ui.Text(entry.DurationText,11));traffic.Children.Add(Ui.Text(entry.Occurrence.Activity.Note??"",11));traffic.Children.Add(Ui.Text("随起终点安排核对；可通过重新规划更新交通。",10));var routeCard=Ui.Card(traffic,"#F0ECE5");routeCard.Tag=entry;routeCard.BorderBrush=Ui.Brush(transfer.ValidationStatus=="STALE"?"#B95D4D":"#B5A08A");return routeCard;}
         var o=entry.Occurrence;var table=vm.State.Tables.Single(t=>t.Id==o.Activity.TableId);bool active=table.Active(DateOnly.FromDateTime(o.Start));conflicts.TryGetValue(o.Key,out var warnings);
         var card=new SwipeActivityCard(entry){BorderBrush=Ui.Brush(table.Color),BorderThickness=new(4,1,1,1)};var panel=new StackPanel();var top=new DockPanel();DockPanel.SetDock(card.Star,Dock.Right);top.Children.Add(card.Star);
         var time=Ui.Text(entry.TimeText+(entry.ContinuesFromYesterday?" · 续":""),12,true);time.Foreground=Ui.Brush("#9B5142");time.Margin=new(0,3,0,5);time.Visibility=list?Visibility.Collapsed:Visibility.Visible;top.Children.Add(time);panel.Children.Add(top);

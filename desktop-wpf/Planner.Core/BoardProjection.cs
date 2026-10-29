@@ -1,6 +1,7 @@
 namespace Planner.Core;
 public sealed record BoardEntry(Occurrence Occurrence,DateOnly Day,DateTime Start,DateTime End)
 {
+    public PlanLeg? Transfer {get;init;}
     public bool ContinuesFromYesterday=>Start>Occurrence.Start;
     public bool ContinuesTomorrow=>End<Occurrence.End;
     public int DayMinutes=>(int)(End-Start).TotalMinutes;
@@ -19,11 +20,11 @@ public static class BoardProjection
     }
     public static List<BoardDay> Range(PlannerState state,DateOnly from,DateOnly until,IEnumerable<string>? visibleTables=null)
     {
-        var entries=CalendarEngine.ExpandForDisplay(state,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue),visibleTables);var result=new List<BoardDay>();
+        var entries=CalendarEngine.ExpandForDisplay(state,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue),visibleTables);var result=new List<BoardDay>();var visible=visibleTables?.ToHashSet();var travel=new List<(Occurrence Occurrence,PlanLeg Leg)>();foreach(var leg in state.Legs.Where(l=>l.ArriveAt>l.DepartAt)){var target=state.Activities.FirstOrDefault(a=>a.Id==leg.ToActivityId);if(target is null||visible is not null&&!visible.Contains(target.TableId))continue;var origin=state.Activities.FirstOrDefault(a=>a.Id==leg.FromActivityId);string fromName=state.PlaceName(origin?.PlaceId??state.Plans.FirstOrDefault(p=>p.Id==leg.PlanId)?.StartPlaceId);string to=state.PlaceName(target.PlaceId);var description=string.Join("；",state.Segments.Where(s=>s.LegId==leg.Id).OrderBy(s=>s.Seq).Select(s=>s.Instruction??s.Mode));var activity=new Activity{Id="route:"+leg.Id,TableId=target.TableId,Title="交通｜"+fromName+" → "+to,PlaceId=target.PlaceId,StartAt=leg.DepartAt,EndAt=leg.ArriveAt,DurationMin=(int)Math.Ceiling((leg.ArriveAt-leg.DepartAt).TotalMinutes),Note=description+"\n"+(leg.ValidationStatus=="VALID"?"地图路线查询快照":leg.ValidationStatus=="STALE"?"起终点或安排已变动，交通需重新核验":"交通粗估，未联网核验")};travel.Add((new(activity,null,activity.Title,activity.PlaceId,leg.DepartAt,leg.ArriveAt),leg));}
         for(var day=from;day<until;day=day.AddDays(1))
         {
             var start=day.ToDateTime(TimeOnly.MinValue);var end=start.AddDays(1);
-            result.Add(new(day,entries.Where(o=>o.Start<end&&o.End>start).Select(o=>new BoardEntry(o,day,o.Start<start?start:o.Start,o.End>end?end:o.End)).OrderBy(e=>e.Start).ThenBy(e=>e.Occurrence.Key).ToList()));
+            result.Add(new(day,entries.Where(o=>o.Start<end&&o.End>start).Select(o=>new BoardEntry(o,day,o.Start<start?start:o.Start,o.End>end?end:o.End)).Concat(travel.Where(t=>t.Occurrence.Start<end&&t.Occurrence.End>start).Select(t=>new BoardEntry(t.Occurrence,day,t.Occurrence.Start<start?start:t.Occurrence.Start,t.Occurrence.End>end?end:t.Occurrence.End){Transfer=t.Leg})).OrderBy(e=>e.Start).ThenBy(e=>e.Occurrence.Key).ToList()));
         }
         return result;
     }
