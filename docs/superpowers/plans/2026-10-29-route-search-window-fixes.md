@@ -24,19 +24,19 @@
 - Search zero/multiple/failed results visibly differ; older response cannot replace newer query or selection. Loading/search/compute controls remain reachable at22px/760x600.
 
 ## Task 1: Window boundaries and visible place search
-- [ ] Add failing native checks for outline/caption separation and functional place search loading/results/empty/error/retry with actual Amap fixture transport.
-- [ ] Add shared visible search control, keep keyword editing, auto unique choice and explicit multiple-choice selection, unify initial/manual search behavior.
-- [ ] Add warm window outline/separate caption; run core/native relevant checks and commit.
+- [x] Add failing native checks for outline/caption separation and functional place search loading/results/empty/error/retry with actual Amap fixture transport.
+- [x] Add shared visible search control, keep keyword editing, auto unique choice and explicit multiple-choice selection, unify initial/manual search behavior.
+- [x] Add warm window outline/separate caption; run core/native relevant checks and commit.
 
 ## Task 2: Transport records and safe batch undo
-- [ ] Add failing core integration tests for14:00+route+30min, saved SQLite routes/board fragments and scoped undo after restart/external edits.
-- [ ] Preserve previous activity/occurrence/departure in plan rows and route snapshots; apply activities+routes in one state revision; project read-only traffic cards.
-- [ ] Extend old-compatible batch receipt route ownership and validation; verify full core suite, commit.
+- [x] Add failing core integration tests for14:00+route+30min, saved SQLite routes/board fragments and scoped undo after restart/external edits.
+- [x] Preserve previous activity/occurrence/departure in plan rows and route snapshots; apply activities+routes in one state revision; project read-only traffic cards.
+- [x] Extend old-compatible batch receipt route ownership and validation; verify full core suite, commit.
 
 ## Task 3: Live draft scheduling and final delivery
-- [ ] Add failing native two-activity fixture checks for auto time fill, route display, edits/recalculation, no draft writes, confirm persistence/reload/undo.
-- [ ] Integrate debounced cancellable preview and explicit compute/route-choice button; invalidate on relevant changes and protect manual fields and stale replies.
-- [ ] Run full core/native suites, inspect screenshots, one fresh code review and one tested fix pass if needed.
-- [ ] Publish a new self-contained package, extract and smoke-start; source archive/checksums; push feature branch, main untouched.
+- [x] Add failing native two-activity fixture checks for auto time fill, route display, edits/recalculation, no draft writes, confirm persistence/reload/undo.
+- [x] Integrate debounced cancellable preview and explicit compute/route-choice button; invalidate on relevant changes and protect manual fields and stale replies.
+- [x] Run full core/native suites, inspect screenshots, one fresh code review and one tested fix pass if needed.
+- [x] Publish a new self-contained package, extract and smoke-start; source archive/checksums; push feature branch, main untouched.
 
 Progress: desktop-wpf/route-search-fixes-progress.md.
