@@ -22,7 +22,7 @@ static class Program
         {
             try
             {
-                if(args.Contains("--guided-only")){await GuidedAssistantChecks.Run(main,directory,Check);code=0;return;}
+                if(args.Contains("--search-only")){await RouteFixChecks.RunSearch(main,directory,Check);code=0;return;}if(args.Contains("--frame-only")){RouteFixChecks.CheckFrame(main,Check);code=0;return;}if(args.Contains("--guided-only")){await GuidedAssistantChecks.Run(main,directory,Check);code=0;return;}
                 await ChromeChecks.Run(main,Check);
                 await DateTimeChecks.Run(main,vm,directory,Check);
                 await Task.Delay(250);var board=Walk(main).OfType<ScheduleBoard>().Single();Check(board.ViewMode=="MONTH","默认打开整月看板");
