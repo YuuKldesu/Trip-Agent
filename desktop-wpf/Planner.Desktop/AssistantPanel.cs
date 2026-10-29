@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Planner.Core;
@@ -31,28 +31,7 @@ public partial class MainWindow
         if(assistantCancel is not null)panel.Children.Add(Ui.Button("取消识别",()=>assistantCancel?.Cancel()));
         panel.Children.Add(Ui.Text(assistantMessage,12));panel.Children.Add(Ui.Text("未配置模型时可用本地单项规则，例如：明天下午2点在南京博物院参观，2小时。",11));host.Children.Add(Ui.Card(panel));
     }
-    partial void OpenSettings()
-    {
-        var store=new SettingsStore(vm.DataDirectory);var config=store.Load();var w=new Window{Title="服务设置",Width=650,Height=780,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner};var panel=new StackPanel{Margin=new(24)};w.Content=new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
-        panel.Children.Add(Ui.Text("按需连接智能与地图服务",20,true));panel.Children.Add(Ui.Text("保存设置不会自动请求服务。密钥使用当前Windows用户保护，复制软件给他人时不附带Data目录。",12));
-        var endpoint=Ui.Input(config.LlmEndpoint);var model=Ui.Input(config.Model);
-        string[] providers=["AUTO","LOCAL","CUSTOM","BAILIAN","DEEPSEEK"];var provider=Ui.Choices(["自动兼容旧设置","本地规则","自定义兼容接口","阿里云百炼","DeepSeek"],Math.Max(0,Array.IndexOf(providers,config.AgentProvider)));var region=Ui.Choices(["北京","新加坡"],config.BailianRegion=="新加坡"?1:0);var host=Ui.Input(config.BailianHost);Ui.Field(panel,"需求识别服务",provider);Ui.Field(panel,"百炼地域",region);Ui.Field(panel,"百炼业务空间API Host（可留空）",host);
-        bool reset=false;
-        PasswordBox Secret(string value){var text=SettingsStore.ReadForSettings(value);if(value.Length>0&&text.Length==0)reset=true;return new(){Password=text,Padding=new(9),Margin=new(0,3,0,10)};}
-        var key=Secret(config.LlmKeyProtected);var web=Secret(config.MapServiceKeyProtected);var js=Secret(config.MapJsKeyProtected);var security=Secret(config.MapSecurityProtected);
-        if(reset)panel.Children.Add(Ui.Text("部分旧密钥无法由当前Windows用户解密，已将对应输入框留空，请重新填写后保存。",12,true));
-        var json=new CheckBox{Content="使用JSON响应模式（接口不支持时可关闭）",IsChecked=config.JsonMode};
-        Ui.Field(panel,"LLM接口基础地址（含/v1；也可填写完整/chat/completions）",endpoint);Ui.Field(panel,"模型名称",model);Ui.Field(panel,"LLM API密钥",key);panel.Children.Add(json);
-        panel.Children.Add(Ui.Text("高德开放平台",17,true));Ui.Field(panel,"Web服务Key（地点与路线查询）",web);Ui.Field(panel,"Web端JS Key（内嵌地图）",js);Ui.Field(panel,"JS安全密钥 securityJsCode",security);
-        panel.Children.Add(Ui.Text("三个地图字段来自相应应用配置。交通价格、拥堵等以接口实际返回为准，未提供的数据不编造。",12));
-        panel.Children.Add(Ui.Button("保存到本机",()=>
-        {
-            if(endpoint.Text.Trim().Length>0)_=LlmClient.Endpoint(endpoint.Text);
-            if(providers[provider.SelectedIndex]=="BAILIAN")_=RepositoryAgentClient.BailianEndpoint(region.Text,host.Text);
-            if(providers[provider.SelectedIndex] is "AUTO" or "CUSTOM"&&key.Password.Length>0&&(model.Text.Trim().Length==0||endpoint.Text.Trim().Length==0))throw new ArgumentException("填写LLM密钥时也应填写接口地址与模型名称。");
-            store.Save(new(){AgentProvider=providers[provider.SelectedIndex],BailianRegion=region.Text,BailianHost=host.Text.Trim(),LlmEndpoint=endpoint.Text.Trim(),Model=model.Text.Trim(),LlmKeyProtected=SettingsStore.Protect(key.Password),MapServiceKeyProtected=SettingsStore.Protect(web.Password),MapJsKeyProtected=SettingsStore.Protect(js.Password),MapSecurityProtected=SettingsStore.Protect(security.Password),JsonMode=json.IsChecked==true});w.Close();vm.Notify("服务设置已保存；未发送网络请求");
-        },true));w.ShowDialog();
-    }
+    partial void OpenSettings()=>OpenSettingsCategory("appearance");
     void EnsureReminders()
     {
         if(reminderTimer is not null)return;

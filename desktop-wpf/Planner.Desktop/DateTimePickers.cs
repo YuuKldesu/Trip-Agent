@@ -10,6 +10,7 @@ namespace Planner.Desktop;
 public sealed class StyledDateEntry:DatePicker
 {
     Popup? picker;
+    public FrameworkElement? PlacementAnchor {get;set;}
     public StyledDateEntry()
     {
         var button=new FrameworkElementFactory(typeof(Button));button.SetValue(Button.HorizontalContentAlignmentProperty,HorizontalAlignment.Left);
@@ -25,8 +26,8 @@ public sealed class StyledDateEntry:DatePicker
         var border=new FrameworkElementFactory(typeof(Border));border.SetValue(Border.CornerRadiusProperty,new CornerRadius(9));border.SetBinding(Border.BackgroundProperty,new System.Windows.Data.Binding("Background"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});var text=new FrameworkElementFactory(typeof(ContentPresenter));text.SetValue(HorizontalAlignmentProperty,HorizontalAlignment.Center);text.SetValue(VerticalAlignmentProperty,VerticalAlignment.Center);text.SetValue(MarginProperty,new Thickness(5));border.AppendChild(text);dayStyle.Setters.Add(new Setter(TemplateProperty,new ControlTemplate(typeof(CalendarDayButton)){VisualTree=border}));
         var selected=new Trigger{Property=CalendarDayButton.IsSelectedProperty,Value=true};selected.Setters.Add(new Setter(BackgroundProperty,Ui.Brush("#AC5A4C")));selected.Setters.Add(new Setter(ForegroundProperty,Brushes.White));dayStyle.Triggers.Add(selected);var inactive=new Trigger{Property=CalendarDayButton.IsInactiveProperty,Value=true};inactive.Setters.Add(new Setter(OpacityProperty,.45));dayStyle.Triggers.Add(inactive);calendar.CalendarDayButtonStyle=dayStyle;
         var panel=new StackPanel();panel.Children.Add(Ui.Text("选择日期",15,true));panel.Children.Add(calendar);var actions=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};panel.Children.Add(actions);
-        actions.Children.Add(Ui.Button("今天",()=>{calendar.DisplayDate=Clock.Now;calendar.SelectedDate=Clock.Today.ToDateTime(TimeOnly.MinValue);}));actions.Children.Add(Ui.Button("取消",()=>picker!.IsOpen=false));actions.Children.Add(Ui.Button("确定日期",()=>{SelectedDate=calendar.SelectedDate;picker!.IsOpen=false;},true));
-        picker=MakePopup(this,panel);picker.IsOpen=true;
+        actions.Children.Add(Ui.Button("今天",()=>{calendar.DisplayDate=Clock.Now;calendar.SelectedDate=Clock.Today.ToDateTime(TimeOnly.MinValue);}));actions.Children.Add(Ui.Button("清除",()=>{SelectedDate=null;picker!.IsOpen=false;}));actions.Children.Add(Ui.Button("取消",()=>picker!.IsOpen=false));actions.Children.Add(Ui.Button("确定日期",()=>{SelectedDate=calendar.SelectedDate;picker!.IsOpen=false;},true));
+        picker=MakePopup(PlacementAnchor??this,panel);picker.IsOpen=true;
     }
     internal static Popup MakePopup(FrameworkElement target,UIElement child)=>new(){PlacementTarget=target,Placement=PlacementMode.Bottom,StaysOpen=false,AllowsTransparency=true,Child=new Border{Background=Ui.Brush("#FFFDF9"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(1),CornerRadius=new(17),Padding=new(14),Child=child}};
 }

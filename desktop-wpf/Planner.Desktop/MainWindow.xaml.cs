@@ -1,109 +1,65 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using Planner.Core;
-
+using Planner.Data;
 namespace Planner.Desktop;
-public partial class MainWindow : Window
+public partial class MainWindow:Window
 {
     readonly PlannerViewModel vm;readonly StackPanel tables=new(),details=new();readonly TextBlock status=Ui.Text("",11);readonly ScheduleBoard calendar;
-    readonly FrameworkElement brand,fullActions,left,right,center;readonly ComboBox modeChoice;readonly Button pinButton;bool compact,updatingMode,changingLayout,closing;
-    double fullWidth,fullHeight,compactWidth,compactHeight;AppearanceWindow? appearanceWindow;
+    readonly DockPanel navigation=new();readonly Border left,right;readonly FrameworkElement center,brand;readonly Button compactSettings;bool compact,changingLayout,closing;
+    double fullWidth,fullHeight,compactWidth,compactHeight;SettingsWindow? settingsWindow;EditorWindow? activeEditor;
     public bool IsCompact=>compact;
     public MainWindow(PlannerViewModel model)
     {
-        InitializeComponent();vm=model;DataContext=vm;Typography.Apply(vm.Appearance.FontSize);Typography.Set(this,13);
-        fullWidth=vm.Appearance.FullWidth;fullHeight=vm.Appearance.FullHeight;compactWidth=vm.Appearance.CompactWidth;compactHeight=vm.Appearance.CompactHeight;
-        Root.RowDefinitions.Add(new(){Height=GridLength.Auto});Root.RowDefinitions.Add(new());Root.RowDefinitions.Add(new(){Height=GridLength.Auto});Root.ColumnDefinitions.Add(new(){Width=new(210)});Root.ColumnDefinitions.Add(new());Root.ColumnDefinitions.Add(new(){Width=new(330)});
-        var top=new DockPanel{Margin=new(16,10,16,8)};Grid.SetColumnSpan(top,3);Root.Children.Add(top);
-        var tools=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};DockPanel.SetDock(tools,Dock.Right);top.Children.Add(tools);
-        modeChoice=Ui.Choices(["自动","完整","简洁"]);modeChoice.MinWidth=88;modeChoice.ToolTip="界面模式";modeChoice.SelectionChanged+=(_,_)=>{if(!updatingMode&&modeChoice.SelectedIndex>=0)Ui.Safe(()=>SetLayoutMode(new[]{"AUTO","FULL","COMPACT"}[modeChoice.SelectedIndex]));};tools.Children.Add(modeChoice);
-        var font=Ui.Button("Aa",OpenAppearance);font.ToolTip="外观与字号";tools.Children.Add(font);pinButton=Ui.Button("置顶",()=>vm.UpdateAppearance(p=>p.AlwaysOnTop=!p.AlwaysOnTop));tools.Children.Add(pinButton);
-        var more=Ui.Button("⋯",()=>{});more.ToolTip="添加、行程表与服务";tools.Children.Add(more);more.Click+=(_,_)=>{var menu=new ContextMenu();void Item(string text,Action action){var item=new MenuItem{Header=text};item.Click+=(_,_)=>Ui.Safe(action);menu.Items.Add(item);}Item("添加行程",()=>OpenEditor(null));Item("行程表与显示",OpenTables);Item("地图与路线",()=>OpenRoutes());Item("服务设置",()=>OpenSettings());Item("外观与字号",OpenAppearance);menu.PlacementTarget=more;menu.IsOpen=true;};
-        var branding=new StackPanel{MinWidth=0};branding.Children.Add(Ui.Text("南京市内智能行程表",23,true));branding.Children.Add(Ui.Text("把事情记清楚，把一天安排好",11));brand=branding;top.Children.Add(brand);
-        var actions=Ui.Row(Ui.Button("服务设置",()=>OpenSettings()),Ui.Button("地图与路线",()=>OpenRoutes()),Ui.Button("＋ 添加行程",()=>OpenEditor(null),true));fullActions=actions;Grid.SetRow(actions,0);Grid.SetColumn(actions,1);actions.HorizontalAlignment=HorizontalAlignment.Right;actions.VerticalAlignment=VerticalAlignment.Bottom;actions.Margin=new(0,0,8,8);
-        // Full actions live in the body-side toolbar to keep the top line responsive.
-        var sidebar=new DockPanel{Margin=new(14,0,8,0)};left=sidebar;Grid.SetRow(left,1);Root.Children.Add(left);
-        var bottom=new StackPanel();bottom.Children.Add(Ui.Button("＋ 新建行程表",()=>TableEditor(null)));bottom.Children.Add(Ui.Button("载入示例行程",()=>{if(Ui.Confirm("仅在空行程中添加示例，继续？"))vm.LoadSample();}));bottom.Children.Add(Ui.Button("重新加载",vm.Reload));bottom.Children.Add(Ui.Text("显示控制卡片可见；生效参与排程。",11));DockPanel.SetDock(bottom,Dock.Bottom);sidebar.Children.Add(bottom);sidebar.Children.Add(tables);
-        var middle=new DockPanel{Margin=new(4,0,6,0)};center=middle;Grid.SetRow(center,1);Grid.SetColumn(center,1);Root.Children.Add(center);DockPanel.SetDock(actions,Dock.Top);middle.Children.Add(actions);
+        InitializeComponent();vm=model;DataContext=vm;Typography.Apply(vm.Appearance.FontSize);Typography.Set(this,13);fullWidth=vm.Appearance.FullWidth;fullHeight=vm.Appearance.FullHeight;compactWidth=vm.Appearance.CompactWidth;compactHeight=vm.Appearance.CompactHeight;
+        Root.RowDefinitions.Add(new());Root.RowDefinitions.Add(new(){Height=GridLength.Auto});Root.ColumnDefinitions.Add(new(){Width=new(62)});Root.ColumnDefinitions.Add(new(){Width=new(0)});Root.ColumnDefinitions.Add(new());Root.ColumnDefinitions.Add(new(){Width=new(0)});
+        navigation.Background=Ui.Brush("#F0E8DE");navigation.Margin=new(0);Grid.SetRowSpan(navigation,2);Root.Children.Add(navigation);
+        var leftContent=new DockPanel{Margin=new(14)};var leftHead=Ui.Row(Ui.Text("我的行程表",16,true),ShellIcons.Button("\uE8BB","关闭行程表",ToggleTables,"CloseTables"));DockPanel.SetDock(leftHead,Dock.Top);leftContent.Children.Add(leftHead);var tableActions=new StackPanel();tableActions.Children.Add(Ui.Button("＋ 新建行程表",()=>TableEditor(null)));tableActions.Children.Add(Ui.Button("载入示例行程",()=>{if(Ui.Confirm("仅在空行程中添加示例，继续？"))vm.LoadSample();}));tableActions.Children.Add(Ui.Button("重新加载",vm.Reload));tableActions.Children.Add(Ui.Text("选中后，新行程默认加入该表。显示控制可见；生效控制排程约束。",11));DockPanel.SetDock(tableActions,Dock.Bottom);leftContent.Children.Add(tableActions);leftContent.Children.Add(new ScrollViewer{Content=tables,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});left=new(){Background=Ui.Brush("#F6F0E7"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(0,0,1,0),Child=leftContent};Grid.SetColumn(left,1);Root.Children.Add(left);
+        var middle=new DockPanel{Margin=new(14,10,14,0)};center=middle;Grid.SetColumn(middle,2);Root.Children.Add(middle);var heading=new DockPanel{Margin=new(2,0,2,10)};DockPanel.SetDock(heading,Dock.Top);middle.Children.Add(heading);var actions=new WrapPanel{HorizontalAlignment=HorizontalAlignment.Right};DockPanel.SetDock(actions,Dock.Right);heading.Children.Add(actions);compactSettings=ShellIcons.Button(ShellIcons.Settings,"设置",()=>OpenSettings(),"NavSettingsCompact");actions.Children.Add(compactSettings);actions.Children.Add(Ui.Button("＋ 添加行程",()=>OpenEditor(null),true));var title=new StackPanel();title.Children.Add(Ui.Text("南京市内智能行程表",21,true));title.Children.Add(Ui.Text("把每一天安排得从容一点",11));brand=title;heading.Children.Add(title);
         calendar=new(vm);middle.Children.Add(calendar);calendar.AddRequested+=d=>OpenEditor(null,d);calendar.EditRequested+=o=>OpenEditor(o);calendar.Selected+=ShowDetails;calendar.DeleteRequested+=Delete;
-        right=new ScrollViewer{Content=details,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new(10,0,16,0)};Grid.SetColumn(right,2);Grid.SetRow(right,1);Root.Children.Add(right);
-        Grid.SetRow(status,2);Grid.SetColumnSpan(status,3);status.Margin=new(16,4,16,5);Root.Children.Add(status);
+        right=new(){Background=Ui.Brush("#F6F0E7"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(1,0,0,0),Padding=new(12),Child=new ScrollViewer{Content=details,VerticalScrollBarVisibility=ScrollBarVisibility.Auto}};Grid.SetColumn(right,3);Root.Children.Add(right);BuildAssistant(details);
+        Grid.SetRow(status,1);Grid.SetColumn(status,1);Grid.SetColumnSpan(status,3);status.Margin=new(14,5,14,5);Root.Children.Add(status);
         vm.Changed+=Refresh;SizeChanged+=(_,_)=>{if(!changingLayout){RememberSize();ApplyLayout();}};Loaded+=(_,_)=>{changingLayout=true;try{var area=SystemParameters.WorkArea;bool small=vm.Appearance.LayoutMode=="COMPACT";Width=Math.Min(small?compactWidth:fullWidth,area.Width);Height=Math.Min(small?compactHeight:fullHeight,area.Height);}finally{changingLayout=false;}ApplyLayout();};
-        Closing+=(_,_)=>{closing=true;RememberSize();new Planner.Data.BoardPreferenceStore(vm.DataDirectory).Update(p=>{p.FullWidth=fullWidth;p.FullHeight=fullHeight;p.CompactWidth=compactWidth;p.CompactHeight=compactHeight;});};Closed+=(_,_)=>{vm.Changed-=Refresh;OnClosedServices();};Refresh();
+        PreviewKeyDown+=(_,e)=>{if(e.Key==Key.B&&(Keyboard.Modifiers&ModifierKeys.Control)!=0){vm.UpdateAppearance(p=>p.SidebarExpanded=!p.SidebarExpanded);e.Handled=true;}};
+        Closing+=(_,_)=>{closing=true;RememberSize();new BoardPreferenceStore(vm.DataDirectory).Update(p=>{p.FullWidth=fullWidth;p.FullHeight=fullHeight;p.CompactWidth=compactWidth;p.CompactHeight=compactHeight;});};Closed+=(_,_)=>{vm.Changed-=Refresh;settingsWindow?.Close();OnClosedServices();};Refresh();
     }
-    void Refresh()
+    void Refresh(){if(closing)return;Typography.Apply(vm.Appearance.FontSize);BuildNavigation();BuildTables(tables);ApplyLayout();}
+    void BuildNavigation()
     {
-        if(closing)return;Typography.Apply(vm.Appearance.FontSize);updatingMode=true;modeChoice.SelectedIndex=Array.IndexOf(new[]{"AUTO","FULL","COMPACT"},vm.Appearance.LayoutMode);updatingMode=false;
-        BuildTables(tables);ShowDetails(null);ApplyLayout();
+        navigation.Children.Clear();bool expanded=vm.Appearance.SidebarExpanded;var bottom=new StackPanel{Margin=new(6,0,6,10)};DockPanel.SetDock(bottom,Dock.Bottom);navigation.Children.Add(bottom);var profile=ShellIcons.Button(ShellIcons.Profile,vm.Appearance.Nickname,()=>OpenSettingsCategory("profile"),"NavProfile",expanded);if(profile.Content is StackPanel profileRow){profileRow.Children.RemoveAt(0);profileRow.Children.Insert(0,new Border{Background=Ui.Brush("#D8B6A0"),CornerRadius=new(14),Width=26,Height=26,Child=new TextBlock{Text=vm.Appearance.Avatar,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center}});}bottom.Children.Add(profile);bottom.Children.Add(ShellIcons.Button(ShellIcons.Settings,"设置",()=>OpenSettings(),"NavSettings",expanded));var top=new StackPanel{Margin=new(6,8,6,0)};navigation.Children.Add(top);
+        top.Children.Add(ShellIcons.Button(ShellIcons.Menu,"展开或收起侧边栏 · Ctrl+B",()=>vm.UpdateAppearance(p=>p.SidebarExpanded=!p.SidebarExpanded),"NavToggle",expanded));top.Children.Add(ShellIcons.Button(ShellIcons.Board,"行程看板",()=>calendar.Focus(),"NavBoard",expanded));var tableButton=ShellIcons.Button(ShellIcons.Tables,"我的行程表",ToggleTables,"NavTables",expanded);tableButton.Background=Ui.Brush(vm.Appearance.TablesPanelOpen?"#E5D5C5":"#F0E8DE");top.Children.Add(tableButton);top.Children.Add(ShellIcons.Button(ShellIcons.Map,"地图与路线",()=>OpenRoutes(),"NavMap",expanded));var ai=ShellIcons.Button(ShellIcons.Assistant,"智能行程助手",ToggleAssistant,"NavAssistant",expanded);ai.Background=Ui.Brush(vm.Appearance.AssistantPanelOpen?"#E5D5C5":"#F0E8DE");top.Children.Add(ai);
     }
+    public void ToggleTables()=>vm.UpdateAppearance(p=>p.TablesPanelOpen=!p.TablesPanelOpen);
+    public void ToggleAssistant()=>vm.UpdateAppearance(p=>p.AssistantPanelOpen=!p.AssistantPanelOpen);
     void RememberSize(){if(!IsLoaded||WindowState!=WindowState.Normal)return;if(compact&&ActualWidth is >=320 and <=800&&ActualHeight is >=460 and <=3000){compactWidth=ActualWidth;compactHeight=ActualHeight;}else if(!compact&&ActualWidth is >=1120 and <=4000&&ActualHeight is >=680 and <=3000){fullWidth=ActualWidth;fullHeight=ActualHeight;}}
     public void SetLayoutMode(string mode)
     {
-        if(mode is not("AUTO" or "FULL" or "COMPACT"))throw new ArgumentException("未知界面模式。");RememberSize();vm.UpdateAppearance(p=>p.LayoutMode=mode);
-        if(mode!="AUTO"){changingLayout=true;try{var area=SystemParameters.WorkArea;Width=Math.Min(mode=="COMPACT"?compactWidth:fullWidth,area.Width);Height=Math.Min(mode=="COMPACT"?compactHeight:fullHeight,area.Height);Left=Math.Clamp(Left,area.Left,Math.Max(area.Left,area.Right-Width));Top=Math.Clamp(Top,area.Top,Math.Max(area.Top,area.Bottom-Height));}finally{changingLayout=false;}}ApplyLayout();
+        if(mode is not("AUTO" or "FULL" or "COMPACT"))throw new ArgumentException("未知界面模式。");RememberSize();vm.UpdateAppearance(p=>p.LayoutMode=mode);if(mode!="AUTO"){changingLayout=true;try{var area=SystemParameters.WorkArea;Width=Math.Min(mode=="COMPACT"?compactWidth:fullWidth,area.Width);Height=Math.Min(mode=="COMPACT"?compactHeight:fullHeight,area.Height);Left=Math.Clamp(Left,area.Left,Math.Max(area.Left,area.Right-Width));Top=Math.Clamp(Top,area.Top,Math.Max(area.Top,area.Bottom-Height));}finally{changingLayout=false;}}ApplyLayout();
     }
     void ApplyLayout()
     {
-        if(changingLayout||closing)return;changingLayout=true;
-        try
-        {
-            compact=PresentationPolicy.Compact(vm.Appearance.LayoutMode,ActualWidth>0?ActualWidth:Width,ActualHeight>0?ActualHeight:Height,compact,vm.Appearance.FontSize);
-            MinWidth=Math.Min(vm.Appearance.LayoutMode=="FULL"?1120:320,SystemParameters.WorkArea.Width);MinHeight=Math.Min(compact?460:680,SystemParameters.WorkArea.Height);brand.Visibility=fullActions.Visibility=left.Visibility=right.Visibility=compact?Visibility.Collapsed:Visibility.Visible;
-            Root.ColumnDefinitions[0].Width=new(compact?0:190);Root.ColumnDefinitions[2].Width=new(compact?0:300);center.MaxWidth=compact?600:double.PositiveInfinity;center.HorizontalAlignment=HorizontalAlignment.Stretch;center.Margin=compact?new(8,0,8,0):new(4,0,6,0);
-            pinButton.Visibility=compact?Visibility.Visible:Visibility.Collapsed;pinButton.Background=Ui.Brush(vm.Appearance.AlwaysOnTop?"#E6C9A6":"#F2E6D7");Topmost=compact&&vm.Appearance.AlwaysOnTop;Title=compact?"今日行程":"南京市内智能行程表";
-            calendar.SetCompact(compact);status.Text=compact?vm.Status:vm.Status+"   ·   "+vm.DataDirectory;
-        }
-        finally{changingLayout=false;}
+        if(changingLayout||closing)return;changingLayout=true;try{compact=PresentationPolicy.Compact(vm.Appearance.LayoutMode,ActualWidth>0?ActualWidth:Width,ActualHeight>0?ActualHeight:Height,compact,vm.Appearance.FontSize);MinWidth=Math.Min(vm.Appearance.LayoutMode=="FULL"?1120:320,SystemParameters.WorkArea.Width);MinHeight=Math.Min(compact?460:680,SystemParameters.WorkArea.Height);
+        navigation.Visibility=brand.Visibility=compact?Visibility.Collapsed:Visibility.Visible;left.Visibility=!compact&&vm.Appearance.TablesPanelOpen?Visibility.Visible:Visibility.Collapsed;right.Visibility=!compact&&vm.Appearance.AssistantPanelOpen?Visibility.Visible:Visibility.Collapsed;Root.ColumnDefinitions[0].Width=new(compact?0:vm.Appearance.SidebarExpanded?202:62);Root.ColumnDefinitions[1].Width=new(left.Visibility==Visibility.Visible?244:0);Root.ColumnDefinitions[3].Width=new(right.Visibility==Visibility.Visible?360:0);compactSettings.Visibility=compact?Visibility.Visible:Visibility.Collapsed;center.Margin=compact?new(8,6,8,0):new(14,10,14,0);Topmost=compact&&vm.Appearance.AlwaysOnTop;Title=compact?"今日行程":"南京市内智能行程表";calendar.SetCompact(compact);status.Text=vm.Status;}finally{changingLayout=false;}
     }
-    void OpenAppearance(){if(appearanceWindow is not null){appearanceWindow.Activate();return;}var w=new AppearanceWindow(vm){Owner=this};appearanceWindow=w;w.Closed+=(_,_)=>appearanceWindow=null;w.Show();}
-    void OpenTables(){var w=new Window{Title="行程表与显示",Width=420,Height=620,MinWidth=340,MinHeight=400,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner};var p=new StackPanel{Margin=new(18)};w.Content=new ScrollViewer{Content=p,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};void RefreshTables(){p.Children.Clear();BuildTables(p);p.Children.Add(Ui.Button("新建行程表",()=>TableEditor(null)));}vm.Changed+=RefreshTables;w.Closed+=(_,_)=>vm.Changed-=RefreshTables;RefreshTables();w.Show();}
+    public void OpenSettingsCategory(string category)
+    {
+        if(settingsWindow is not null){settingsWindow.SelectCategory(category);settingsWindow.Activate();return;}var w=new SettingsWindow(vm,category){Owner=this};settingsWindow=w;w.Closed+=(_,_)=>settingsWindow=null;w.Show();
+    }
+    void OpenTables(){if(compact)OpenSettingsCategory("appearance");else if(!vm.Appearance.TablesPanelOpen)ToggleTables();}
     void BuildTables(StackPanel target)
     {
-        target.Children.Clear();target.Children.Add(Ui.Text("我的行程表",16,true));
-        foreach(var t in vm.State.Tables)
-        {
-            var panel=new StackPanel();var pick=Ui.Button(t.Name,()=>{vm.SelectedTableId=t.Id;assistantCancel?.Cancel();vm.Notify();});pick.Background=Ui.Brush(t.Color);pick.FontWeight=t.Id==vm.SelectedTableId?FontWeights.Bold:FontWeights.Normal;panel.Children.Add(pick);
-            var visible=new CheckBox{Content="显示",IsChecked=!vm.HiddenTables.Contains(t.Id)};visible.Click+=(_,_)=>{if(visible.IsChecked==true)vm.HiddenTables.Remove(t.Id);else vm.HiddenTables.Add(t.Id);vm.Notify();};
-            var active=new CheckBox{Content="生效",IsChecked=t.Enabled};active.Click+=(_,_)=>Ui.Safe(()=>{if(Ui.Confirm($"{(active.IsChecked==true?"启用":"停用")}“{t.Name}”？这会改变排程约束。"))vm.Mutate(s=>{var x=s.Tables.Single(x=>x.Id==t.Id);x.Enabled=active.IsChecked==true;x.Version++;foreach(var l in s.Legs)l.ValidationStatus="STALE";foreach(var p in s.Plans)p.Status="STALE";});else Refresh();});
-            var options=new WrapPanel();options.Children.Add(visible);options.Children.Add(active);var settings=Ui.Button("设置",()=>TableEditor(t));settings.Padding=new(8,6,8,6);options.Children.Add(settings);panel.Children.Add(options);target.Children.Add(Ui.Card(panel,"#F6EDDF"));
-        }
+        target.Children.Clear();foreach(var t in vm.State.Tables){var panel=new StackPanel();var head=new DockPanel();var edit=ShellIcons.Button(ShellIcons.Settings,"编辑"+t.Name,()=>TableEditor(t),"TableEdit:"+t.Id);edit.Padding=new(4);edit.MinHeight=30;DockPanel.SetDock(edit,Dock.Right);head.Children.Add(edit);var pick=Ui.Button(t.Name,()=>{vm.SelectedTableId=t.Id;vm.Notify("新行程默认加入："+t.Name);});pick.Background=Brushes.Transparent;pick.HorizontalContentAlignment=HorizontalAlignment.Left;head.Children.Add(pick);panel.Children.Add(head);var visible=new CheckBox{Content="显示",IsChecked=!vm.HiddenTables.Contains(t.Id)};visible.Click+=(_,_)=>{if(visible.IsChecked==true)vm.HiddenTables.Remove(t.Id);else vm.HiddenTables.Add(t.Id);vm.UpdateAppearance(p=>p.HiddenTables=new(vm.HiddenTables));};var active=new CheckBox{Content="生效",IsChecked=t.Enabled};active.Click+=(_,_)=>Ui.Safe(()=>{if(Ui.Confirm($"{(active.IsChecked==true?"启用":"停用")}“{t.Name}”？这会改变排程约束。"))vm.Mutate(s=>{var x=s.Tables.Single(x=>x.Id==t.Id);x.Enabled=active.IsChecked==true;x.Version++;foreach(var l in s.Legs)l.ValidationStatus="STALE";foreach(var p in s.Plans)p.Status="STALE";});else Refresh();});panel.Children.Add(Ui.Row(visible,active));var card=Ui.Card(panel);card.BorderBrush=Ui.Brush(t.Color);card.BorderThickness=new(t.Id==vm.SelectedTableId?4:2,1,1,1);card.Padding=new(9);target.Children.Add(card);}
     }
-    void ShowDetails(Occurrence? o)
-    {
-        details.Children.Clear();details.Children.Add(Ui.Text("今天，也从容一点",18,true));details.Children.Add(Ui.Text($"当前选择 {vm.SelectedDate:yyyy-MM-dd}",12));
-        if(o is not null)
-        {
-            var p=new StackPanel();p.Children.Add(Ui.Text(o.Title,17,true));p.Children.Add(Ui.Text($"{o.Start:MM-dd HH:mm} — {o.End:MM-dd HH:mm}"));p.Children.Add(Ui.Text(vm.State.PlaceName(o.PlaceId)));p.Children.Add(Ui.Row(Ui.Button("编辑",()=>OpenEditor(o)),Ui.Button("删除本次",()=>Delete(o))));details.Children.Add(Ui.Card(p));
-        }
-        var warnings=vm.WeekConflicts();var list=new StackPanel();list.Children.Add(Ui.Text("本周检查",14,true));list.Children.Add(Ui.Text(warnings.Count==0?"暂无时间重叠；未填地点的事项尚未核验交通。":string.Join("\n\n",warnings.Take(6).Select(x=>x.Message)),12));details.Children.Add(Ui.Card(list));
-        BuildAssistant(details);
-    }
-    EditorWindow? activeEditor;
-    void OpenEditor(Occurrence? o,DateTime? initial=null)
-    {
-        if(vm.State.Tables.Count==0)throw new ArgumentException("请先新建一份行程表。");if(activeEditor is not null){activeEditor.Activate();return;}
-        var w=new EditorWindow(vm,o,initial){Owner=this};activeEditor=w;w.Closed+=(_,_)=>{activeEditor=null;if(w.SavedDate is {} date)calendar.NavigateTo(date);};w.Show();
-    }
-
-    void Delete(Occurrence o)
-    {
-        if(!Ui.Confirm($"删除“{o.Title}”？\n"+(o.OriginDate is null?"此项活动及关联路线和提醒将移除。":"仅取消这次，不影响之后的每周安排。")))return;
-        vm.Edit([new(){Activity=JsonKit.Clone(o.Activity),OriginDate=o.OriginDate,Action="DELETE"}]);
-    }
+    void ShowDetails(Occurrence? occurrence){if(occurrence is not null)vm.Notify($"{occurrence.Title} · {occurrence.Start:MM-dd HH:mm}—{occurrence.End:MM-dd HH:mm}");else{details.Children.Clear();BuildAssistant(details);}}
+    void OpenEditor(Occurrence? o,DateTime? initial=null){if(vm.State.Tables.Count==0)throw new ArgumentException("请先新建一份行程表。");if(activeEditor is not null){activeEditor.Activate();return;}var w=new EditorWindow(vm,o,initial){Owner=this};activeEditor=w;w.Closed+=(_,_)=>{activeEditor=null;if(w.SavedDate is {} date)calendar.NavigateTo(date);};w.Show();}
+    void Delete(Occurrence o){if(!Ui.Confirm($"删除“{o.Title}”？\n"+(o.OriginDate is null?"此项活动及关联路线和提醒将移除。":"仅取消这次，不影响之后的每周安排。")))return;vm.Edit([new(){Activity=JsonKit.Clone(o.Activity),OriginDate=o.OriginDate,Action="DELETE"}]);}
     void TableEditor(ScheduleTable? original)
     {
-        var w=new Window{Title=original is null?"新建行程表":"行程表设置",Width=440,Height=470,Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,MinWidth=340,MinHeight=360};var p=new StackPanel{Margin=new(22)};w.Content=new ScrollViewer{Content=p,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
-        var name=Ui.Input(original?.Name??"");var color=Ui.Choices(["浅杏 · 工作","鼠尾草 · 个人","淡粉 · 休闲","浅黄 · 学习"]);string[] colors=["#E5BD99","#C2C3A5","#E8C6BB","#E8D9A7"];
-        color.SelectedIndex=Math.Max(0,Array.IndexOf(colors,original?.Color));
-        var from=new DatePicker{SelectedDate=original?.ValidFrom?.ToDateTime(TimeOnly.MinValue)};var until=new DatePicker{SelectedDate=original?.ValidUntil?.ToDateTime(TimeOnly.MinValue)};
-        Ui.Field(p,"名称",name);Ui.Field(p,"颜色",color);Ui.Field(p,"生效起日（可留空）",from);Ui.Field(p,"结束日期（可留空）",until);
-        p.Children.Add(Ui.Button("保存",()=>{if(string.IsNullOrWhiteSpace(name.Text)||name.Text.Trim().Length>60)throw new ArgumentException("名称应为1至60字。");if(from.SelectedDate>until.SelectedDate)throw new ArgumentException("结束日早于起日。");vm.Mutate(s=>{var t=original is null?new ScheduleTable():s.Tables.Single(t=>t.Id==original.Id);t.Name=name.Text.Trim();t.Color=colors[color.SelectedIndex];t.ValidFrom=from.SelectedDate is {} a?DateOnly.FromDateTime(a):null;t.ValidUntil=until.SelectedDate is {} b?DateOnly.FromDateTime(b):null;t.Version++;if(original is null)s.Tables.Add(t);foreach(var l in s.Legs)l.ValidationStatus="STALE";});w.Close();},true));
-        if(original is not null)p.Children.Add(Ui.Button("删除行程表",()=>{var count=vm.State.Activities.Count(a=>a.TableId==original.Id);if(!Ui.Confirm($"删除“{original.Name}”及其 {count} 项活动、周期例外和关联路线？此操作不可撤销。"))return;vm.Mutate(s=>{foreach(var id in s.Activities.Where(a=>a.TableId==original.Id).Select(a=>a.Id).ToList())ChangeService.RemoveActivity(s,id);s.Scopes.RemoveAll(x=>x.TableId==original.Id);s.Tables.RemoveAll(t=>t.Id==original.Id);});if(vm.SelectedTableId==original.Id)vm.SelectedTableId=vm.State.Tables.FirstOrDefault()?.Id??"";w.Close();}));
-        w.ShowDialog();
+        var w=new Window{Title=original is null?"新建行程表":"行程表设置",Width=460,Height=Math.Min(640,SystemParameters.WorkArea.Height),Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner,MinWidth=340,MinHeight=360};var p=new StackPanel{Margin=new(22)};w.Content=new ScrollViewer{Content=p,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};var name=Ui.Input(original?.Name??"");var colors=new TableColorPicker(original?.Color);var from=new StyledDateEntry{SelectedDate=original?.ValidFrom?.ToDateTime(TimeOnly.MinValue)};var until=new StyledDateEntry{SelectedDate=original?.ValidUntil?.ToDateTime(TimeOnly.MinValue)};Ui.Field(p,"名称",name);p.Children.Add(Ui.Text("选择行程表主色",13,true));p.Children.Add(colors);Ui.Field(p,"生效起日（可留空）",from);Ui.Field(p,"结束日期（可留空）",until);
+        var save=Ui.Button("保存",()=>{if(string.IsNullOrWhiteSpace(name.Text)||name.Text.Trim().Length>60)throw new ArgumentException("名称应为1至60字。");if(colors.SelectedColor is null)throw new ArgumentException("请选择行程表主色。");if(from.SelectedDate>until.SelectedDate)throw new ArgumentException("结束日早于起日。");vm.Mutate(s=>{var t=original is null?new ScheduleTable():s.Tables.Single(t=>t.Id==original.Id);t.Name=name.Text.Trim();t.Color=colors.SelectedColor;t.ValidFrom=from.SelectedDate is {} a?DateOnly.FromDateTime(a):null;t.ValidUntil=until.SelectedDate is {} b?DateOnly.FromDateTime(b):null;t.Version++;if(original is null)s.Tables.Add(t);foreach(var l in s.Legs)l.ValidationStatus="STALE";});w.Close();},true);save.IsEnabled=colors.SelectedColor is not null;colors.SelectionChanged+=()=>save.IsEnabled=true;p.Children.Add(save);
+        if(original is not null)p.Children.Add(Ui.Button("删除行程表",()=>{int count=vm.State.Activities.Count(a=>a.TableId==original.Id);if(!Ui.Confirm($"删除“{original.Name}”及其 {count} 项活动、周期例外和关联路线？此操作不可撤销。"))return;vm.Mutate(s=>{foreach(var id in s.Activities.Where(a=>a.TableId==original.Id).Select(a=>a.Id).ToList())ChangeService.RemoveActivity(s,id);s.Scopes.RemoveAll(x=>x.TableId==original.Id);s.Tables.RemoveAll(t=>t.Id==original.Id);});if(vm.SelectedTableId==original.Id)vm.SelectedTableId=vm.State.Tables.FirstOrDefault()?.Id??"";w.Close();}));w.ShowDialog();
     }
-    partial void BuildAssistant(Panel host);
-    partial void OpenSettings();
-    partial void OpenRoutes();
-    partial void OnClosedServices();
+    partial void BuildAssistant(Panel host);partial void OpenSettings();partial void OpenRoutes();partial void OnClosedServices();
 }

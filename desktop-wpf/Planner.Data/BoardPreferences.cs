@@ -6,6 +6,12 @@ public sealed class BoardPreferences
     public double FontSize {get;set;}=14;
     public string LayoutMode {get;set;}="AUTO";
     public bool AlwaysOnTop {get;set;}
+    public string Nickname {get;set;}="我的空间";
+    public string Avatar {get;set;}="我";
+    public bool SidebarExpanded {get;set;}
+    public bool TablesPanelOpen {get;set;}
+    public bool AssistantPanelOpen {get;set;}
+    public HashSet<string> HiddenTables {get;set;}=[];
     public double FullWidth {get;set;}=1480;
     public double FullHeight {get;set;}=920;
     public double CompactWidth {get;set;}=400;
@@ -27,6 +33,7 @@ public sealed class BoardPreferenceStore(string directory)
             if(!File.Exists(path))return new();var value=JsonSerializer.Deserialize<BoardPreferences>(File.ReadAllText(path),JsonKit.Options)??new();
             if(value.View is not("MONTH" or "LIST"))value.View="MONTH";
             value.Completed=Keys(value.Completed);value.Important=Keys(value.Important);
+            value.HiddenTables=Keys(value.HiddenTables);if(string.IsNullOrWhiteSpace(value.Nickname)||value.Nickname.Length>40)value.Nickname="我的空间";if(value.Avatar is not("我" or "行" or "旅"))value.Avatar="我";
             if(!double.IsFinite(value.FontSize)||value.FontSize is <12 or >22)value.FontSize=14;
             if(value.LayoutMode is not("AUTO" or "FULL" or "COMPACT"))value.LayoutMode="AUTO";
             if(!ValidSize(value.FullWidth,1120,4000))value.FullWidth=1480;

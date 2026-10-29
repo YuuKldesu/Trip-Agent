@@ -8,7 +8,7 @@ public static class PresentationPolicy
         return current?width<=1200*scale||ratio<=1.1:width<1080*scale||ratio<.95;
     }
 }
-public enum SwipeOutcome { None,Tap,Toggle }
+public enum SwipeOutcome { None,Tap,Complete,Collect }
 public sealed class SwipeTracker
 {
     double x,y;bool active,moved,vertical,horizontal;
@@ -25,7 +25,7 @@ public sealed class SwipeTracker
     public static double Threshold(double width)=>Math.Clamp(width*.3,30,80);
     public SwipeOutcome End(double width)
     {
-        var result=!active?SwipeOutcome.None:horizontal&&!vertical&&DeltaX>=Threshold(width)?SwipeOutcome.Toggle:!moved?SwipeOutcome.Tap:SwipeOutcome.None;
+        var result=!active?SwipeOutcome.None:horizontal&&!vertical&&Math.Abs(DeltaX)>=Threshold(width)?DeltaX<0?SwipeOutcome.Complete:SwipeOutcome.Collect:!moved?SwipeOutcome.Tap:SwipeOutcome.None;
         Cancel();return result;
     }
     public void Cancel(){active=moved=vertical=horizontal=false;DeltaX=0;}

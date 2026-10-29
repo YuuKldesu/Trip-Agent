@@ -23,6 +23,7 @@ public sealed class PlannerViewModel : INotifyPropertyChanged
         DataDirectory=directory;Appearance=new BoardPreferenceStore(directory).Load();bool fresh=!File.Exists(Path.Combine(directory,"planner.db"));store=new(Path.Combine(directory,"planner.db"));State=store.Load();
         if(State.Tables.Count==0){var n=State.Copy();n.Tables.Add(new(){Name="工作安排",Color="#E5BD99"});n.Tables.Add(new(){Name="个人安排",Color="#C2C3A5"});n.Revision++;Persist(n);}
         SelectedTableId=State.Tables[0].Id;
+        foreach(var id in Appearance.HiddenTables)HiddenTables.Add(id);
         if(seedDemo&&fresh)Persist(DemoSchedule.AddToEmpty(State,Clock.Today));
     }
     public void Notify(string? status=null){if(status is not null)Status=status;PropertyChanged?.Invoke(this,new(null));Changed?.Invoke();}
