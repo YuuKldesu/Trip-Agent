@@ -26,7 +26,7 @@ public sealed class ScheduleBoard:Grid
     public ScheduleBoard(PlannerViewModel model)
     {
         vm=model;Background=Brushes.Transparent;preferences=vm.Appearance;view=preferences.View;
-        month=new(vm.SelectedDate.Year,vm.SelectedDate.Month,1);lastSelection=vm.SelectedDate;
+        month=new(vm.SelectedDate.Year,vm.SelectedDate.Month,1);lastSelection=vm.SelectedDate;if(view=="LIST")listJump=Clock.Today;
         Resources.MergedDictionaries.Add(new(){Source=new Uri("/NanjingPlanner;component/BoardStyles.xaml",UriKind.Relative)});
         var surface=new Grid();surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new());Children.Add(new Border{CornerRadius=new(22),Background=Ui.Brush("#FBF7F0"),BorderBrush=Ui.Brush("#E5DDD3"),BorderThickness=new(1),Padding=new(9),Child=surface});header.Margin=new(4,2,2,7);surface.Children.Add(header);Grid.SetRow(body,2);surface.Children.Add(body);
         header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
@@ -50,7 +50,7 @@ public sealed class ScheduleBoard:Grid
     {
         if(mode is not("MONTH" or "LIST"))throw new ArgumentException("未知看板视图。");
         if(mode==view)return;
-        listVisibleDate=null;resetScroll=false;vm.UpdateAppearance(p=>p.View=mode);
+        listVisibleDate=null;if(mode=="LIST"){listJump=Clock.Today;resetScroll=true;}else resetScroll=false;vm.UpdateAppearance(p=>p.View=mode);
     }
     public void NavigateTo(DateOnly date)
     {
@@ -143,14 +143,16 @@ public sealed class ScheduleBoard:Grid
         var panel=new StackPanel{Margin=new(8,4,8,12)};
         var windows=ContinuousList.Windows(vm.State,listHorizon,VisibleTables());
         var days=windows.SelectMany(w=>DisplayDays(w.From,w.Until)).Where(d=>d.Entries.Count>0).ToList();
+        if(!days.Any(d=>d.Date==Clock.Today)){days.Add(new(Clock.Today,[]));days=days.OrderBy(d=>d.Date).ToList();}
         var conflicts=new Dictionary<string,List<Conflict>>();
         foreach(var window in windows)foreach(var (key,items) in Conflicts(window.From,window.Until)){if(!conflicts.TryGetValue(key,out var existing))conflicts[key]=items;else existing.AddRange(items);}
         scroll=new(){Content=panel,PanningMode=PanningMode.VerticalOnly,VerticalScrollBarVisibility=ScrollBarVisibility.Visible,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};scroll.ScrollChanged+=(_,e)=>{UpdateListCaption();if(e.VerticalChange>0&&scroll is {} current&&current.ScrollableHeight>0&&current.VerticalOffset>=current.ScrollableHeight-120&&vm.State.Rules.Any(r=>r.ValidUntil is null&&vm.State.Activities.Any(a=>a.Id==r.ActivityId&&!vm.HiddenTables.Contains(a.TableId)))){listHorizon=listHorizon.AddDays(180);Dispatcher.BeginInvoke(()=>Render());}};body.Children.Add(scroll);
         caption.Content="全部行程 · 按日期";
         if(days.All(d=>d.Entries.Count==0)){panel.Children.Add(Ui.Text("没有符合显示设置的行程",18,true));panel.Children.Add(Button("＋ 添加行程",()=>Add(vm.SelectedDate)));}
-        foreach(var day in days.Where(d=>d.Entries.Count>0))
+        foreach(var day in days)
         {
             var heading=new DockPanel{Margin=new(0,16,0,10)};var count=Ui.Text(day.Entries.Count+" 项",12);count.Foreground=Ui.Brush("#A39A90");DockPanel.SetDock(count,Dock.Right);heading.Children.Add(count);heading.Children.Add(Ui.Text($"{day.Date.Day}  周{new[]{"一","二","三","四","五","六","日"}[((int)day.Date.DayOfWeek+6)%7]}    {day.Date:yyyy年M月}",17,true));panel.Children.Add(heading);listHeadings.Add((day.Date,heading));
+            if(day.Date==Clock.Today&&day.Entries.Count==0){panel.Children.Add(Ui.Text("今天暂无安排",13));panel.Children.Add(Button("＋ 添加今天的行程",()=>Add(Clock.Today)));}
             BoardEntry? previous=null;
             foreach(var entry in day.Entries)
             {
@@ -163,9 +165,10 @@ public sealed class ScheduleBoard:Grid
     {
         if(compact||view!="LIST"||listJump is not {} target||scroll?.Content is not StackPanel panel)return;
         listJump=null;
+        panel.UpdateLayout();
         var item=listHeadings.FirstOrDefault(h=>h.Date>=target);
         if(item.Heading is null&&listHeadings.Count>0)item=listHeadings[^1];
-        if(item.Heading is not null)scroll.ScrollToVerticalOffset(item.Heading.TranslatePoint(new(0,0),panel).Y);
+        if(item.Heading is not null){double top=item.Heading.TranslatePoint(new(0,0),panel).Y;panel.MinHeight=Math.Max(panel.ActualHeight,top+scroll.ViewportHeight);panel.UpdateLayout();scroll.ScrollToVerticalOffset(top);}
     }
     void UpdateListCaption()
     {
