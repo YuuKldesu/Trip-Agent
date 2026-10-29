@@ -14,11 +14,12 @@ public sealed class EditorWindow:Window
     readonly TextBlock durationLabel=Ui.Text("",12),status=Ui.Text("",11);bool closing,syncingTimes;DateTime previousStart;
     public EditorWindow(PlannerViewModel model,Occurrence? item=null,DateTime? initial=null)
     {
-        vm=model;occurrence=item;openedRevision=vm.State.Revision;Title=item is null?"自定义添加":"编辑行程";Width=820;Height=760;MinWidth=700;MinHeight=580;WindowStartupLocation=WindowStartupLocation.CenterOwner;Background=Ui.Brush("#FBF7F0");FontFamily=new("Microsoft YaHei UI");
-        var outer=new DockPanel{Margin=new(24)};Content=outer;
-        var footer=new DockPanel();DockPanel.SetDock(footer,Dock.Bottom);outer.Children.Add(footer);var actions=Ui.Row(Ui.Button("取消",Close));DockPanel.SetDock(actions,Dock.Right);footer.Children.Add(actions);footer.Children.Add(status);
-        var save=Ui.Button("保存行程",()=>{},true);actions.Children.Add(save);save.Click+=async(_,_)=>{if(closing)return;save.IsEnabled=false;status.Text="正在核对…";try{await SaveAsync();}catch(OperationCanceledException){}catch(Exception ex){status.Text=ex.Message;}finally{if(!closing){save.IsEnabled=true;}}};
-        var panel=new StackPanel();outer.Children.Add(new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
+        vm=model;occurrence=item;openedRevision=vm.State.Revision;Title=item is null?"自定义添加":"编辑行程";Width=820;Height=760;MinWidth=440;MinHeight=360;WindowStartupLocation=WindowStartupLocation.CenterOwner;Background=Ui.Brush("#FBF7F0");FontFamily=new("Microsoft YaHei UI");
+        var area=SystemParameters.WorkArea;Width=Math.Min(Width,area.Width);Height=Math.Min(Height,area.Height);MinWidth=Math.Min(MinWidth,area.Width);MinHeight=Math.Min(MinHeight,area.Height);
+        var outer=new DockPanel{Margin=new(20)};Content=outer;
+        var footer=new Grid{Margin=new(0,12,0,0)};footer.ColumnDefinitions.Add(new());footer.ColumnDefinitions.Add(new(){Width=GridLength.Auto});DockPanel.SetDock(footer,Dock.Bottom);outer.Children.Add(footer);var actions=Ui.Row(Ui.Button("取消",Close));Grid.SetColumn(actions,1);footer.Children.Add(actions);status.MinWidth=0;footer.Children.Add(status);
+        var save=Ui.Button("保存",()=>{},true);actions.Children.Add(save);save.Click+=async(_,_)=>{if(closing)return;save.IsEnabled=false;status.Text="正在核对…";try{await SaveAsync();}catch(OperationCanceledException){}catch(Exception ex){status.Text=ex.Message;}finally{if(!closing){save.IsEnabled=true;}}};
+        var panel=new StackPanel();outer.Children.Add(new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalContentAlignment=HorizontalAlignment.Stretch});
         var actualStart=item?.Start??initial??vm.SelectedDate.ToDateTime(new(9,0));var actualEnd=item?.End??actualStart.AddHours(1);
         title=Ui.Input(item?.Title??"");title.Tag="ActivityTitle";Typography.Set(title,22);title.FontWeight=FontWeights.SemiBold;Ui.Field(panel,item is null?"添加一项安排":"调整这项安排",title);
         panel.Children.Add(Ui.Text(item is null?"填写活动、日期与时间，其他信息可以稍后完善。":new Planner.Data.BoardPreferenceStore(vm.DataDirectory).Load().Completed.Contains(item.Key)?"已完成":"待进行",12));
@@ -28,7 +29,7 @@ public sealed class EditorWindow:Window
         start.Changed+=StartChanged;end.Changed+=EndChanged;start.DateTimeChanged+=_=>StartChanged();end.DateTimeChanged+=_=>EndChanged();
         date.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&date.SelectedDate is {} d){start.DateContext=d.Date;StartChanged();}};endDate.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&endDate.SelectedDate is {} d){end.DateContext=d.Date;EndChanged();}};
         var quick=new WrapPanel();foreach(int minutes in new[]{30,60,90,120}){int duration=minutes;quick.Children.Add(Ui.Button(minutes+" 分钟",()=>{if(TimeOnly.TryParseExact(start.Text,"HH:mm",out var st)&&date.SelectedDate is {} d)SetEnd(d.Date.Add(st.ToTimeSpan()).AddMinutes(duration));}));}quick.Children.Add(durationLabel);panel.Children.Add(quick);
-        mode=Ui.Choices(["公交","步行","骑行","驾车"]);checkTravel.IsChecked=item?.PlaceId is {} pid&&vm.State.Places.Any(p=>p.Id==pid&&p.Lng is not null);panel.Children.Add(Ui.Row(checkTravel,mode));
+        mode=Ui.Choices(["公交","步行","骑行","驾车"]);checkTravel.IsChecked=item?.PlaceId is {} pid&&vm.State.Places.Any(p=>p.Id==pid&&p.Lng is not null);var travelRow=new WrapPanel();travelRow.Children.Add(checkTravel);travelRow.Children.Add(mode);panel.Children.Add(travelRow);
         note=Ui.Input(item?.Activity.Note??"");note.AcceptsReturn=true;note.TextWrapping=TextWrapping.Wrap;note.MinHeight=90;Ui.Field(panel,"备注",note);
         table=new();foreach(var t in vm.State.Tables)table.Items.Add(new ComboBoxItem{Content=t.Name,Tag=t.Id});table.SelectedIndex=Math.Max(0,vm.State.Tables.FindIndex(t=>t.Id==(item?.Activity.TableId??vm.SelectedTableId)));
         kind=Ui.Choices(["具体某一天","每周重复"],item?.Activity.Kind=="WEEKLY"?1:0);constraint=Ui.Choices(["固定时间","允许规划时调整"],item?.Activity.ConstraintType=="FLEXIBLE"?1:0);scope=Ui.Choices(item?.Activity.Kind=="WEEKLY"?["仅这一次","从所选日期起调整整套规则"]:["此项活动"]);
@@ -49,7 +50,13 @@ public sealed class EditorWindow:Window
     void EndChanged(){if(syncingTimes)return;if(TimeOnly.TryParseExact(end.Text,"HH:mm",out _)&&endDate.SelectedDate!=end.DateContext.Date){syncingTimes=true;try{endDate.SelectedDate=end.DateContext.Date;}finally{syncingTimes=false;}}UpdateDuration();}
     void SetEnd(DateTime value){syncingTimes=true;try{endDate.SelectedDate=value.Date;end.DateContext=value.Date;end.Text=value.ToString("HH:mm");}finally{syncingTimes=false;}UpdateDuration();}
     void UpdateDuration(){if(date.SelectedDate is {} from&&endDate.SelectedDate is {} untilDay&&TimeOnly.TryParseExact(start.Text,"HH:mm",out var s)&&TimeOnly.TryParseExact(end.Text,"HH:mm",out var e)){int minutes=(int)(untilDay.Date.Add(e.ToTimeSpan())-from.Date.Add(s.ToTimeSpan())).TotalMinutes;overnight.IsChecked=untilDay.Date>from.Date;durationLabel.Text=minutes>0?$"耗时 {minutes} 分钟"+(untilDay.Date>from.Date?$" · 跨 {(untilDay.Date-from.Date).Days} 天":""):"结束日期时间应晚于开始";}else durationLabel.Text="请填写日期和HH:mm格式时间";}
-    static void AddPair(Panel parent,string left,Control first,string right,Control second){var row=new Grid{Margin=new(0,0,0,4)};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new());var a=new StackPanel{Margin=new(0,0,10,0)};var b=new StackPanel{Margin=new(10,0,0,0)};Ui.Field(a,left,first);Ui.Field(b,right,second);Grid.SetColumn(b,1);row.Children.Add(a);row.Children.Add(b);parent.Children.Add(row);}
+    static void AddPair(Panel parent,string left,Control first,string right,Control second)
+    {
+        var row=new Grid{Margin=new(0,0,0,4),HorizontalAlignment=HorizontalAlignment.Stretch};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new());row.RowDefinitions.Add(new(){Height=GridLength.Auto});row.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        first.MinWidth=second.MinWidth=0;var a=new StackPanel();var b=new StackPanel();Ui.Field(a,left,first);Ui.Field(b,right,second);row.Children.Add(a);row.Children.Add(b);parent.Children.Add(row);bool? narrow=null;
+        void Reflow(){bool next=row.ActualWidth<540*Typography.Scale;if(narrow==next)return;narrow=next;Grid.SetColumn(b,next?0:1);Grid.SetRow(b,next?1:0);Grid.SetColumnSpan(a,next?2:1);Grid.SetColumnSpan(b,next?2:1);a.Margin=next?new(0):new(0,0,8,0);b.Margin=next?new(0):new(8,0,0,0);}
+        row.SizeChanged+=(_,_)=>Reflow();row.Loaded+=(_,_)=>Reflow();
+    }
     async Task SaveAsync()
     {
         if(vm.State.Revision!=openedRevision)throw new InvalidOperationException("相关行程已发生变化，请关闭后重新打开编辑。 ");

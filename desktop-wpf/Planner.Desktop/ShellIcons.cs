@@ -16,12 +16,12 @@ public static class ShellIcons
         if(expanded)row.Children.Add(new TextBlock{Text=label,Margin=new(12,0,0,0),VerticalAlignment=VerticalAlignment.Center,MaxWidth=126});
         var b=Ui.Button("",click);b.Content=row;b.Tag=tag;b.Style=(Style)Application.Current.FindResource("NavigationIconButton");b.MinHeight=44;b.Padding=new(10);b.HorizontalContentAlignment=HorizontalAlignment.Center;
         var tip=new StackPanel{Orientation=Orientation.Horizontal};tip.Children.Add(new TextBlock{Text=label,VerticalAlignment=VerticalAlignment.Center});
-        if(tag=="NavToggle")tip.Children.Add(new Border{CornerRadius=new(8),Background=Ui.Brush("#606060"),Padding=new(7,2,7,2),Margin=new(10,0,0,0),Child=new TextBlock{Text="Ctrl+Shift+S",Foreground=Brushes.White,FontSize=12,FontWeight=FontWeights.SemiBold}});
+        if(tag=="NavToggle")tip.Children.Add(new Border{CornerRadius=new(8),Background=Ui.Brush("#606060"),Padding=new(7,2,7,2),Margin=new(10,0,0,0),Child=new TextBlock{Text="Ctrl+B",Foreground=Brushes.White,FontSize=12,FontWeight=FontWeights.SemiBold}});
         b.ToolTip=new ToolTip{Content=tip,Placement=System.Windows.Controls.Primitives.PlacementMode.Right,HorizontalOffset=8};ToolTipService.SetInitialShowDelay(b,300);ToolTipService.SetShowDuration(b,10000);AutomationProperties.SetName(b,label);return b;
     }
     static FrameworkElement SidebarMark()
     {
-        var mark=new System.Windows.Shapes.Path{Data=Geometry.Parse("M5,2 L19,2 A3,3 0 0 1 22,5 L22,19 A3,3 0 0 1 19,22 L5,22 A3,3 0 0 1 2,19 L2,5 A3,3 0 0 1 5,2 M9,2 L9,22"),Stroke=Ui.Brush("#686868"),StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Width=23,Height=23,Stretch=Stretch.Uniform};return mark;
+        var mark=new System.Windows.Shapes.Path{Data=Geometry.Parse("M5,2 L19,2 A3,3 0 0 1 22,5 L22,19 A3,3 0 0 1 19,22 L5,22 A3,3 0 0 1 2,19 L2,5 A3,3 0 0 1 5,2 M9,2 L9,22"),Stroke=Ui.Brush("#686868"),StrokeThickness=1.7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round,Width=19,Height=19,Stretch=Stretch.Uniform};return mark;
     }
 }
 public sealed class TableColorPicker:WrapPanel
