@@ -15,11 +15,11 @@ public partial class MainWindow
         var toggle=ShellIcons.Button(ShellIcons.Menu,"显示/隐藏侧边栏",ToggleSidebar,"NavToggle");DockPanel.SetDock(toggle,Dock.Right);head.Children.Add(toggle);
         if(expanded){var search=ShellIcons.Button("\uE721","搜索行程和行程表",OpenSearch,"NavSearch");DockPanel.SetDock(search,Dock.Right);head.Children.Add(search);head.Children.Add(new TextBlock{Text="南京行程",FontSize=18,FontWeight=FontWeights.SemiBold,Margin=new(10,0,0,0),VerticalAlignment=VerticalAlignment.Center});}
         var bottom=new StackPanel{Margin=new(5,6,5,10)};DockPanel.SetDock(bottom,Dock.Bottom);navigation.Children.Add(bottom);
-        var profile=ShellIcons.Button(ShellIcons.Profile,vm.Appearance.Nickname,()=>OpenSettingsCategory("profile"),"NavProfile",expanded);if(profile.Content is StackPanel profileRow){profileRow.Children.RemoveAt(0);profileRow.Children.Insert(0,new Border{Width=24,Height=24,CornerRadius=new(12),Background=Ui.Brush("#D8B6A0"),Child=new TextBlock{Text=vm.Appearance.Avatar,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center}});}bottom.Children.Add(profile);bottom.Children.Add(ShellIcons.Button(ShellIcons.Settings,"设置",()=>OpenSettings(),"NavSettings",expanded));
+        var profile=ShellIcons.Button(ShellIcons.Profile,vm.Appearance.Nickname,()=>OpenSettingsCategory("profile"),"NavProfile",expanded);if(profile.Content is StackPanel profileRow){profileRow.Children.RemoveAt(0);profileRow.Children.Insert(0,new Border{Width=24,Height=24,CornerRadius=new(12),Background=Ui.Brush("#D8B6A0"),Child=new TextBlock{Text=vm.Appearance.Avatar,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center}});}bottom.Children.Add(profile);var settings=ShellIcons.Button(ShellIcons.Settings,"设置",()=>OpenSettings(),"NavSettings",expanded);if(workspacePage=="settings")settings.Background=AppTheme.Brush("Selected");bottom.Children.Add(settings);
         var content=new StackPanel{Margin=new(5,0,5,0)};navigation.Children.Add(new ScrollViewer{Content=content,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled});
         void Add(string glyph,string label,Action action,string tag,bool active=false){var b=ShellIcons.Button(glyph,label,action,tag,expanded);if(expanded)b.HorizontalContentAlignment=HorizontalAlignment.Left;if(active)b.Background=Ui.Brush("#E5E1DC");content.Children.Add(b);}
         if(!expanded)Add("\uE721","搜索行程和行程表",OpenSearch,"NavSearch");
-        Add("\uE70F","新建行程",()=>OpenEditor(null),"NavNew");Add(ShellIcons.Board,"行程看板",ShowBoard,"NavBoard",true);
+        Add("\uE70F","新建行程",()=>OpenEditor(null),"NavNew");Add(ShellIcons.Board,"行程看板",ShowBoard,"NavBoard",workspacePage=="board");
         Add(ShellIcons.Tables,"我的行程表",ToggleTables,"NavTables",vm.Appearance.TablesPanelOpen&&expanded);
         if(expanded&&vm.Appearance.TablesPanelOpen){BuildTableRows();content.Children.Add(tables);var create=Ui.Button("＋ 新建行程表",()=>TableEditor(null));create.Background=Brushes.Transparent;create.HorizontalContentAlignment=HorizontalAlignment.Left;content.Children.Add(create);}
         Add(ShellIcons.Map,"地图与路线",()=>OpenRoutes(),"NavMap");Add(ShellIcons.Assistant,"智能助手",ToggleAssistant,"NavAssistant",vm.Appearance.AssistantPanelOpen);
@@ -29,7 +29,7 @@ public partial class MainWindow
         tables.Children.Clear();foreach(var table in vm.State.Tables)
         {
             var row=new Grid{Margin=new(14,1,2,1)};row.ColumnDefinitions.Add(new());row.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
-            var title=new StackPanel{Orientation=Orientation.Horizontal};title.Children.Add(new Border{Background=Ui.Brush(table.Color),Width=8,Height=8,CornerRadius=new(4),Margin=new(0,0,8,0)});title.Children.Add(new TextBlock{Text=table.Name,TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,MaxWidth=120});
+            var title=new StackPanel{Orientation=Orientation.Horizontal};title.Children.Add(new Border{Background=Ui.RawBrush(table.Color),Width=8,Height=8,CornerRadius=new(4),Margin=new(0,0,8,0)});title.Children.Add(new TextBlock{Text=table.Name,TextTrimming=TextTrimming.CharacterEllipsis,VerticalAlignment=VerticalAlignment.Center,MaxWidth=120});
             var pick=Ui.Button("",()=>{vm.SelectedTableId=table.Id;vm.Notify("新行程默认加入："+table.Name);});pick.Content=title;pick.Padding=new(8);pick.HorizontalContentAlignment=HorizontalAlignment.Left;pick.Background=table.Id==vm.SelectedTableId?Ui.Brush("#E5E1DC"):Brushes.Transparent;row.Children.Add(pick);
             var actions=new StackPanel{Orientation=Orientation.Horizontal};Grid.SetColumn(actions,1);row.Children.Add(actions);
             var eye=Ui.Button(vm.HiddenTables.Contains(table.Id)?"◌":"◉",()=>{if(!vm.HiddenTables.Add(table.Id))vm.HiddenTables.Remove(table.Id);vm.UpdateAppearance(p=>p.HiddenTables=new(vm.HiddenTables));});eye.ToolTip="显示/隐藏“"+table.Name+"”（不改变是否参与排程）";eye.Padding=new(5);eye.Background=Brushes.Transparent;actions.Children.Add(eye);
@@ -49,7 +49,7 @@ public partial class MainWindow
         vm.SelectedTableId=hit.TableId;vm.UpdateAppearance(p=>{p.SidebarExpanded=true;p.TablesPanelOpen=true;});
         if(hit.Kind=="table")return;
         if(hit.Day is not {} day)return;
-        vm.HiddenTables.Remove(hit.TableId);vm.UpdateAppearance(p=>p.HiddenTables=new(vm.HiddenTables));calendar.NavigateTo(day);
+        vm.HiddenTables.Remove(hit.TableId);vm.UpdateAppearance(p=>p.HiddenTables=new(vm.HiddenTables));ShowBoard();calendar.NavigateTo(day);
         var occurrence=CalendarEngine.ExpandForDisplay(vm.State,day.ToDateTime(TimeOnly.MinValue),day.AddDays(1).ToDateTime(TimeOnly.MinValue),[hit.TableId]).FirstOrDefault(o=>o.Activity.Id==hit.Id);
         if(occurrence is not null)OpenEditor(occurrence);
     }

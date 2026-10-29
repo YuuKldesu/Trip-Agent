@@ -28,13 +28,13 @@ public sealed class ScheduleBoard:Grid
         vm=model;Background=Brushes.Transparent;preferences=vm.Appearance;view=preferences.View;
         month=new(vm.SelectedDate.Year,vm.SelectedDate.Month,1);lastSelection=vm.SelectedDate;if(view=="LIST")listJump=Clock.Today;
         Resources.MergedDictionaries.Add(new(){Source=new Uri("/NanjingPlanner;component/BoardStyles.xaml",UriKind.Relative)});
-        var surface=new Grid();surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new());Children.Add(new Border{CornerRadius=new(22),Background=Ui.Brush("#FBF7F0"),BorderBrush=Ui.Brush("#E5DDD3"),BorderThickness=new(1),Padding=new(9),Child=surface});header.Margin=new(4,2,2,7);surface.Children.Add(header);Grid.SetRow(body,2);surface.Children.Add(body);
+        var surface=new Grid();surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new());Children.Add(new Border{CornerRadius=new(6),Background=Ui.Brush("#FBF7F0"),BorderBrush=Ui.Brush("#E5DDD3"),BorderThickness=new(1),Padding=new(9),Child=surface});header.Margin=new(4,2,2,7);surface.Children.Add(header);Grid.SetRow(body,2);surface.Children.Add(body);
         header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
         var left=new WrapPanel{VerticalAlignment=VerticalAlignment.Center};header.Children.Add(left);heading=Ui.Text("行程看板",19,true);heading.Foreground=Ui.Brush("#443B35");heading.Margin=new(0,5,12,4);left.Children.Add(heading);
         caption=Button("",PickDate);caption.FontWeight=FontWeights.SemiBold;caption.ToolTip="点击选择日期";left.Children.Add(caption);
         var prev=Button("‹",()=>Shift(-1));Typography.Set(prev,22);prev.Padding=new(8,0,8,3);prev.ToolTip="上月";monthNavigation.Children.Add(prev);
         var next=Button("›",()=>Shift(1));Typography.Set(next,22);next.Padding=new(8,0,8,3);next.ToolTip="下月";monthNavigation.Children.Add(next);left.Children.Add(monthNavigation);
-        var today=Button("今天",()=>NavigateTo(Clock.Today));today.Background=Brushes.White;left.Children.Add(today);
+        var today=Button("今天",()=>NavigateTo(Clock.Today));today.Background=AppTheme.Brush("Surface");left.Children.Add(today);
         modes=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};Grid.SetColumn(modes,1);header.Children.Add(modes);
         foreach(var (key,text) in new[]{("MONTH","月历"),("LIST","列表")}){var b=Button(text,()=>SetView(key));modeButtons[key]=b;modes.Children.Add(b);}
         filters=new WrapPanel{Margin=new(8,0,0,5)};Grid.SetRow(filters,1);surface.Children.Add(filters);
@@ -124,10 +124,10 @@ public sealed class ScheduleBoard:Grid
         for(int index=0;index<days.Count;index++)
         {
             var day=days[index];bool current=day.Date.Month==month.Month;var panel=new StackPanel();
-            var cell=new Border{Background=Ui.Brush("#EEEDEB"),BorderBrush=Ui.Brush("#E4E0DB"),BorderThickness=new(1),CornerRadius=new(18),Margin=new(3),Child=panel,Tag=day.Date};Grid.SetRow(cell,index/7);Grid.SetColumn(cell,index%7);monthGrid.Children.Add(cell);
+            var cell=new Border{Background=AppTheme.Brush(current?"Surface":"Panel"),BorderBrush=AppTheme.Brush("Border"),BorderThickness=new(0,0,1,1),CornerRadius=new(0),Margin=new(0),Child=panel,Tag=day.Date};Grid.SetRow(cell,index/7);Grid.SetColumn(cell,index%7);monthGrid.Children.Add(cell);
             var daybar=new DockPanel();
-            var pick=Button(day.Date.Day+(day.Date==Clock.Today?" · 今天":""),()=>SelectDay(day.Date));pick.Tag=day.Date;pick.Padding=new(9,8,6,8);pick.HorizontalContentAlignment=HorizontalAlignment.Left;Typography.Set(pick,13);pick.FontWeight=FontWeights.SemiBold;pick.Foreground=Ui.Brush(day.Date==Clock.Today?"#FFFAF6":current?"#AC5A4C":"#B8978C");daybar.Children.Add(pick);panel.Children.Add(new Border{Background=Ui.Brush(day.Date==Clock.Today?"#AC5A4C":"#F4DFD9"),CornerRadius=new(17,17,0,0),Child=daybar});
-            var activities=new StackPanel{Margin=new(6,8,6,6)};panel.Children.Add(activities);foreach(var entry in day.Entries)activities.Children.Add(ActivityCard(entry,false,conflicts));
+            var pick=Button(day.Date.Day+(day.Date==Clock.Today?" · 今天":""),()=>SelectDay(day.Date));pick.Tag=day.Date;pick.Padding=new(8,4,8,4);pick.Margin=new(5);pick.HorizontalAlignment=HorizontalAlignment.Left;pick.Background=day.Date==Clock.Today?AppTheme.Brush("Accent"):Brushes.Transparent;pick.HorizontalContentAlignment=HorizontalAlignment.Left;Typography.Set(pick,13);pick.FontWeight=FontWeights.SemiBold;pick.Foreground=AppTheme.Brush(day.Date==Clock.Today?"Canvas":current?"Text":"Muted");daybar.Children.Add(pick);panel.Children.Add(new Border{Background=Brushes.Transparent,CornerRadius=new(0),Child=daybar});
+            var activities=new StackPanel{Margin=new(5,2,5,5)};panel.Children.Add(activities);foreach(var entry in day.Entries)activities.Children.Add(ActivityCard(entry,false,conflicts));
             cell.MouseLeftButtonUp+=(_,e)=>{DependencyObject? target=e.OriginalSource as DependencyObject;while(target is not null&&target!=cell){if(target is ButtonBase or TextBox or CheckBox||target is Border{Tag:BoardEntry})return;target=VisualTreeHelper.GetParent(target);}Add(day.Date);e.Handled=true;};
             var menu=new ContextMenu();var item=new MenuItem{Header="添加当天行程"};item.Click+=(_,_)=>Add(day.Date);menu.Items.Add(item);cell.ContextMenu=menu;
         }
@@ -180,19 +180,19 @@ public sealed class ScheduleBoard:Grid
     {
         if(entry.Transfer is {} transfer){var traffic=new StackPanel();traffic.Children.Add(Ui.Text("交通安排 · "+entry.TimeText,12,true));traffic.Children.Add(Ui.Text(entry.Occurrence.Title,14,true));traffic.Children.Add(Ui.Text(entry.DurationText,11));traffic.Children.Add(Ui.Text(entry.Occurrence.Activity.Note??"",11));traffic.Children.Add(Ui.Text("随起终点安排核对；可通过重新规划更新交通。",10));var routeCard=Ui.Card(traffic,"#F0ECE5");routeCard.Tag=entry;routeCard.BorderBrush=Ui.Brush(transfer.ValidationStatus=="STALE"?"#B95D4D":"#B5A08A");return routeCard;}
         var o=entry.Occurrence;var table=vm.State.Tables.Single(t=>t.Id==o.Activity.TableId);bool active=table.Active(DateOnly.FromDateTime(o.Start));conflicts.TryGetValue(o.Key,out var warnings);
-        var card=new SwipeActivityCard(entry){BorderBrush=Ui.Brush(table.Color),BorderThickness=new(4,1,1,1)};var panel=new StackPanel();var top=new DockPanel();DockPanel.SetDock(card.Star,Dock.Right);top.Children.Add(card.Star);
+        var card=new SwipeActivityCard(entry){BorderBrush=Ui.RawBrush(table.Color),BorderThickness=new(4,1,1,1)};var panel=new StackPanel();var top=new DockPanel();if(!list){card.CornerRadius=new(5);card.Padding=new(8);card.Margin=new(0,0,0,6);DockPanel.SetDock(card.Completion,Dock.Left);top.Children.Add(card.Completion);}DockPanel.SetDock(card.Star,Dock.Right);top.Children.Add(card.Star);
         var time=Ui.Text(entry.TimeText+(entry.ContinuesFromYesterday?" · 续":""),12,true);time.Foreground=Ui.Brush("#9B5142");time.Margin=new(0,3,0,5);time.Visibility=list?Visibility.Collapsed:Visibility.Visible;top.Children.Add(time);panel.Children.Add(top);
         var title=Ui.Text(o.Title,list?15:14,true);title.Margin=new(0,0,0,6);title.Foreground=Ui.Brush("#443B35");panel.Children.Add(title);
         panel.Children.Add(Muted("地点："+vm.State.PlaceName(o.PlaceId),12));panel.Children.Add(Muted(entry.DurationText,11));if(entry.ContinuityText.Length>0)panel.Children.Add(Muted(entry.ContinuityText,11));
         if(!string.IsNullOrWhiteSpace(o.Activity.Note))panel.Children.Add(Muted("备注："+o.Activity.Note,12));
-        var tableLabel=Muted(table.Name+(o.OriginDate is null?"":" · 每周")+(!active?" · 未生效":""),11);tableLabel.Foreground=Ui.Brush(table.Color);panel.Children.Add(tableLabel);
+        var tableLabel=Muted(table.Name+(o.OriginDate is null?"":" · 每周")+(!active?" · 未生效":""),11);tableLabel.Foreground=AppTheme.TableText(table.Color);panel.Children.Add(tableLabel);
         if(warnings is {Count:>0}){var warning=Ui.Text(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"! 时间冲突":"◷ 交通待核验",11,true);warning.Foreground=Ui.Brush(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"#AF5146":"#986638");warning.Margin=new(0,3,0,0);panel.Children.Add(warning);}
         card.Child=panel;card.SetState(preferences.Completed.Contains(o.Key),preferences.Important.Contains(o.Key));
         card.ToggleRequested+=()=>Ui.Safe(()=>ToggleCompleted(o.Key));card.ImportantRequested+=()=>Ui.Safe(()=>vm.UpdateAppearance(p=>{if(!p.Important.Add(o.Key))p.Important.Remove(o.Key);}));card.EditRequested+=()=>{SelectOccurrence(o);EditRequested?.Invoke(o);};
         var menu=new ContextMenu();menu.Opened+=(_,_)=>
         {
             menu.Items.Clear();foreach(var (label,action) in new (string,Action)[]{("查看详情",()=>SelectOccurrence(o)),("编辑活动",()=>{SelectOccurrence(o);EditRequested?.Invoke(o);}), (vm.Appearance.Completed.Contains(o.Key)?"恢复未完成":"标记完成",()=>ToggleCompleted(o.Key)),(vm.Appearance.Important.Contains(o.Key)?"取消收藏":"收藏",()=>vm.UpdateAppearance(p=>{if(!p.Important.Add(o.Key))p.Important.Remove(o.Key);})),("删除这一次",()=>DeleteRequested?.Invoke(o))}){var item=new MenuItem{Header=label};item.Click+=(_,_)=>Ui.Safe(action);menu.Items.Add(item);}
-        };card.ContextMenu=menu;return card;
+        };card.ContextMenu=menu;if(!list){var more=Ui.Button("…",()=>menu.IsOpen=true);more.ToolTip="更多行程操作";more.Padding=new(3,0,3,0);more.Background=Brushes.Transparent;menu.PlacementTarget=more;DockPanel.SetDock(more,Dock.Right);top.Children.Insert(0,more);more.Opacity=0;card.MouseEnter+=(_,_)=>more.Opacity=1;card.MouseLeave+=(_,_)=>{if(!more.IsKeyboardFocusWithin)more.Opacity=0;};more.GotKeyboardFocus+=(_,_)=>more.Opacity=1;}return card;
     }
     static TextBlock Muted(string text,double size){var label=Ui.Text(text,size);label.Foreground=Ui.Brush("#77716A");label.Margin=new(0,0,0,4);return label;}
     void ToggleCompleted(string key)=>vm.UpdateAppearance(p=>{if(!p.Completed.Add(key))p.Completed.Remove(key);});

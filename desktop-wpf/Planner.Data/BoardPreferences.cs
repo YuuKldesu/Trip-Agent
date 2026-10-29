@@ -3,6 +3,8 @@ using System.Text.Json;
 namespace Planner.Data;
 public sealed class BoardPreferences
 {
+    public string Theme {get;set;}="暖色";
+    public string AccentColor {get;set;}="珊瑚";
     public double FontSize {get;set;}=14;
     public string LayoutMode {get;set;}="AUTO";
     public bool AlwaysOnTop {get;set;}
@@ -32,6 +34,7 @@ public sealed class BoardPreferenceStore(string directory)
         try
         {
             if(!File.Exists(path))return new();var value=JsonSerializer.Deserialize<BoardPreferences>(File.ReadAllText(path),JsonKit.Options)??new();
+            if(!ThemePalette.Themes.Contains(value.Theme))value.Theme="暖色";if(!ThemePalette.Accents.ContainsKey(value.AccentColor))value.AccentColor="珊瑚";
             if(!double.IsFinite(value.AssistantWidth)||value.AssistantWidth is <280 or >700)value.AssistantWidth=380;
             if(value.View is not("MONTH" or "LIST"))value.View="MONTH";
             value.Completed=Keys(value.Completed);value.Important=Keys(value.Important);

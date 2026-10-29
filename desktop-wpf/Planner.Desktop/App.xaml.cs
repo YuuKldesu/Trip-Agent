@@ -18,7 +18,7 @@ public partial class App : Application
         try
         {
             Directory.CreateDirectory(data);
-            var vm=new PlannerViewModel(data);var window=new MainWindow(vm);MainWindow=window;window.Show();
+            var vm=new PlannerViewModel(data);AppTheme.Apply(vm.Appearance.Theme,vm.Appearance.AccentColor);var window=new MainWindow(vm);MainWindow=window;window.Show();
             if(e.Args.Contains("--smoke"))
             {
                 if(vm.State.Activities.Count==0)vm.LoadSample();

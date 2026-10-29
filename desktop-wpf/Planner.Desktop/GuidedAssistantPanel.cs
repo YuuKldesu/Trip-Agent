@@ -76,7 +76,7 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
     void RenderReceipts()
     {
         receipts.Children.Clear();foreach(var receipt in conversation.Batches.Where(r=>r.BranchId==conversation.ActiveBranchId&&r.Status is "APPLIED" or "PENDING" or "UNDO_PENDING" or "CONFLICT").Reverse()){
-            receipts.Children.Add(Ui.Text($"{receipt.CreatedAt:MM-dd HH:mm} · 生成 {receipt.Activities.Count} 项"+(receipt.Status=="CONFLICT"?" · 需要核对":""),11));var undo=Ui.Button("撤回此批次",()=>UndoBatch(receipt.Id));undo.IsEnabled=receipt.Status=="APPLIED";undo.Tag="UndoBatch:"+receipt.Id;receipts.Children.Add(undo);var show=Ui.Button("查看行程",()=>{if(receipt.Activities.FirstOrDefault() is {} owned&&vm.State.Activities.FirstOrDefault(a=>a.Id==owned.Id)?.StartAt is {} date)vm.FocusDate(DateOnly.FromDateTime(date));});receipts.Children.Add(show);
+            receipts.Children.Add(Ui.Text($"{receipt.CreatedAt:MM-dd HH:mm} · 生成 {receipt.Activities.Count} 项"+(receipt.Status=="CONFLICT"?" · 需要核对":""),11));var undo=Ui.Button("撤回此批次",()=>UndoBatch(receipt.Id));undo.IsEnabled=receipt.Status=="APPLIED";undo.Tag="UndoBatch:"+receipt.Id;receipts.Children.Add(undo);var show=Ui.Button("查看行程",()=>{if(receipt.Activities.FirstOrDefault() is {} owned&&vm.State.Activities.FirstOrDefault(a=>a.Id==owned.Id)?.StartAt is {} date){if(owner is MainWindow main)main.ReturnToBoard();vm.FocusDate(DateOnly.FromDateTime(date));}});receipts.Children.Add(show);
         }
     }
     public AgentReviewWindow OpenReview()

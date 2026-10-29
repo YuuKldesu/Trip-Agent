@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -13,19 +13,21 @@ public sealed class SwipeActivityCard:Border
     readonly SwipeTracker tracker=new();readonly TranslateTransform translation=new();bool tracking;TouchDevice? touch;
     public BoardEntry Entry {get;}
     public Button Star {get;}
+    public Button Completion {get;}
     public bool IsCompleted {get;private set;}
     public bool IsImportant {get;private set;}
     public event Action? ToggleRequested;public event Action? ImportantRequested;public event Action? EditRequested;
     public SwipeActivityCard(BoardEntry entry)
     {
         Entry=entry;Tag=entry;Focusable=true;CornerRadius=new(16);Background=Ui.Brush("#FFFDF9");BorderBrush=Ui.Brush("#E6E1DB");BorderThickness=new(1);Padding=new(10);Margin=new(0,0,0,8);RenderTransform=translation;
+        Completion=Ui.Button("○",()=>ToggleRequested?.Invoke());Completion.Background=Brushes.Transparent;Completion.Padding=new(2);Completion.Margin=new(0,0,4,0);Completion.ToolTip="标记完成";Typography.Set(Completion,16);
         Star=Ui.Button("☆",()=>ImportantRequested?.Invoke());Star.Background=Brushes.Transparent;Star.Padding=new(3,0,3,0);Star.Margin=new(2,0,0,0);Star.MinWidth=28;Star.FontFamily=new("Segoe UI Symbol");Typography.Set(Star,18);
         AutomationProperties.SetName(this,entry.Occurrence.Title);Star.ToolTip="标记重要";
         Unloaded+=(_,_)=>CancelSwipe();
     }
     public void SetState(bool completed,bool important,bool animate=false)
     {
-        bool changed=IsCompleted!=completed;IsCompleted=completed;IsImportant=important;
+        bool changed=IsCompleted!=completed;IsCompleted=completed;IsImportant=important;Completion.Content=completed?"✓":"○";Completion.ToolTip=completed?"恢复未完成":"标记完成";Completion.Foreground=AppTheme.Brush("Accent");
         Star.Content="★";Star.Foreground=Ui.Brush("#A47820");Star.Visibility=important?Visibility.Visible:Visibility.Collapsed;Star.ToolTip="取消收藏";
         AutomationProperties.SetName(Star,"取消收藏："+Entry.Occurrence.Title);
         ToolTip=$"{Entry.Occurrence.Title}\n{Entry.Occurrence.Start:yyyy-MM-dd HH:mm} — {Entry.Occurrence.End:MM-dd HH:mm}\n"+(completed?"已完成":"待进行")+" · 左滑完成 · 右滑收藏 · 点击编辑 · 右键更多";
