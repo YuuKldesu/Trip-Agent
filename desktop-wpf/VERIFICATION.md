@@ -15,8 +15,8 @@
 
 - 核心领域检查106/106：真实 HTTP 客户端配合固定响应处理器、真实 SQLite、历史持久化、并发保存、分支隔离、批次撤回、重启恢复、跨日日期、提醒等。最新日志：工作区 tmp/review-core-green.log。
 - 原生 WPF 检查98/98：完整旧有回归与新界面，包含22号字、320宽简洁模式、设置、左右面板、日期/时间弹层、跨日核对保存、实际多轮对话、旧消息分支、旧回复阻断、无边框窗口控件。最新目录：工作区 tmp/guided-review-green-20261029。
-- 自包含 win-x64 Release 发布通过，无编译警告或错误。工作区 tmp/guided-publish-final-20261029.log。
-- 从发布目录独立启动主程序，自动渲染主窗、编辑器、路线窗并正常退出0：tmp/guided-release-smoke-20261029/smoke-result.txt，样例17项。此过程使用独立测试数据目录。
+- 自包含 win-x64 Release 发布通过，无编译警告或错误。工作区 tmp/guided-reviewed-publish-20261029.log。
+- 从发布目录独立启动主程序，自动渲染主窗、编辑器、路线窗并正常退出0：tmp/guided-final-archive-smoke-20261029/smoke-result.txt，样例17项。此过程使用独立测试数据目录。
 - 已查看实际 WPF 截图，覆盖无边框主窗、暖色设置、大字号、时间滚轮及日历。截图由真实控件渲染。
 
 ## 验证边界
