@@ -19,7 +19,7 @@ public sealed class TripRequest
 }
 public sealed record PreparedTrip(TripRequest Request,Place Place);
 public sealed record TravelEstimate(int Minutes,string Source){public RouteOption? Option {get;init;}};
-public sealed record PlannedTrip(PreparedTrip Trip,int Start,TravelEstimate Before,TravelEstimate After,string? PreviousTitle,string? NextTitle){public string ActivityId {get;init;}=Guid.NewGuid().ToString("N");public string? PreviousActivityId {get;init;}public DateOnly? PreviousOriginDate {get;init;}public DateTime? TravelDepartAt {get;init;}};
+public sealed record PlannedTrip(PreparedTrip Trip,int Start,TravelEstimate Before,TravelEstimate After,string? PreviousTitle,string? NextTitle){public string ActivityId {get;init;}=Guid.NewGuid().ToString("N");public string? PreviousActivityId {get;init;}public DateOnly? PreviousOriginDate {get;init;}public string? PreviousPlaceId {get;init;}public string? NextActivityId {get;init;}public DateOnly? NextOriginDate {get;init;}public string? NextPlaceId {get;init;}public DateTime? TravelDepartAt {get;init;}};
 public sealed record RepositoryPlan(long Revision,IReadOnlyList<PlannedTrip> Rows);
 
 // Port of app.py plan/plan_prepared: fixed existing events, ordered first feasible gap.
@@ -58,11 +58,12 @@ public static class RepositoryPlanner
                 var after=next is null?new TravelEstimate(0,"无后续行程"):await Leg(item.Place,next.Place,null,(e.Start??low)+duration);
                 high=Math.Min(high,(next?.Start??finishLimit)-duration-after.Minutes);
                 int candidate=e.Start??low;if(candidate<low||candidate>high)continue;
-                found=new(item,candidate,before,after,prev?.Title,next?.Title){PreviousActivityId=prev?.ActivityId,PreviousOriginDate=prev?.OriginDate,TravelDepartAt=prev is null?null:begin.AddMinutes(prev.End)};break;
+                found=new(item,candidate,before,after,prev?.Title,next?.Title){PreviousActivityId=prev?.ActivityId,PreviousOriginDate=prev?.OriginDate,PreviousPlaceId=prev?.Place?.Id,NextActivityId=next?.ActivityId,NextOriginDate=next?.OriginDate,NextPlaceId=next?.Place?.Id,TravelDepartAt=prev is null?null:begin.AddMinutes(prev.End)};break;
             }
             if(found is null)throw new ArgumentException($"“{e.Title}”无法在指定时间与已有活动及交通之间安排；未指定开始时间时默认在08:00—22:00寻找空档。");
             rows.Add(found);if(!working.Places.Any(p=>p.Id==item.Place.Id))working.Places.Add(JsonKit.Clone(item.Place));working.Activities.Add(new(){Id=found.ActivityId,TableId=provisional.Id,Title=e.Title,PlaceId=item.Place.Id,StartAt=begin.AddMinutes(found.Start),EndAt=begin.AddMinutes(found.Start+duration),DurationMin=duration});previousNew[day]=found.Start+duration;
         }
+        for(int i=0;i<rows.Count;i++){var outgoing=rows.FirstOrDefault(r=>r.PreviousActivityId==rows[i].ActivityId&&r.PreviousOriginDate is null);if(outgoing is not null)rows[i]=rows[i] with{After=outgoing.Before,NextActivityId=outgoing.ActivityId,NextOriginDate=null,NextPlaceId=outgoing.Trip.Place.Id,NextTitle=outgoing.Trip.Request.Title};}
         return new(state.Revision,rows);
     }
     public static List<EditCommand> Commands(RepositoryPlan plan,string tableId)=>plan.Rows.Select(row=>

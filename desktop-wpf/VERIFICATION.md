@@ -12,13 +12,17 @@
 
 ## 已执行
 
-- 核心112/112通过。新增：14:00+路程+30分钟，真实SQLite保存/读取，交通卡片可见性与跨午夜分片，重启后批次撤回，同日无关修改、修改交通/外部依赖拒绝，兼容现有每日唯一Plan。
-- 原生WPF121/121通过。包含原98项与搜索/边界/草稿联动/交通展示/确认保存重读撤回。HTTP固定响应通过实际AmapClient与地图解析器；检查实际14:00出发请求、旧响应隔离、几何/地铁票价保存及相同路线不重复查询。
+- 核心115/115通过。新增：14:00+路程+30分钟，真实SQLite保存/读取，交通卡片可见性与跨午夜分片，重启后批次撤回，同日无关修改、修改交通/外部依赖拒绝，兼容现有每日唯一Plan。
+- 原生WPF128/128通过。包含原98项与搜索/边界/草稿联动/交通展示/确认保存重读撤回。HTTP固定响应通过实际AmapClient与地图解析器；检查实际14:00出发请求、旧响应隔离、几何/地铁票价保存及相同路线不重复查询。
 - 完整Release构建0警告、0错误。
-- 实际截图检查：工作区tmp/route-all-native及tmp/route-http-green；核心日志tmp/route-all-core.log，原生日志tmp/route-all-native/board-checks.txt。失败复现保存在tmp/route-frame-red、route-search-red、draft-flow-red、route-cache-red和transfer-red.log。
+- 实际截图检查：工作区tmp/route-reviewed-final-native及tmp/route-http-green；核心日志tmp/route-reviewed-final-core.log，原生日志tmp/route-reviewed-final-native/board-checks.txt。失败复现保存在tmp/route-frame-red、route-search-red、draft-flow-red、route-cache-red和transfer-red.log。
 
 ## 证据边界
 
 没有发起真实付费模型、地图或DSH请求；HTTP夹具中的35分钟/2元为测试响应，不代表真实路线。未配置地图时仍明确标注直线粗估。真实触屏、多显示器、全部DPI及在线Key权限仍需在对应环境确认。原生检查调用真实控件事件及保存，不冒充物理鼠标/触屏测试。
 
 独立审阅、最终发布包解压启动、源码归档及SHA256在交付记录补充。上一版日期按钮区域格式的小问题沿用：选择弹层与最终核对日期完整明确，未在本轮混入额外样式调整。
+
+## 最终独立审阅
+
+详见ROUTE_FIX_REVIEW.md。三项Important及提升处理的输入中间态问题已在一次修复中先复现再修正，完整套件115/115和128/128通过。额外覆盖清空/仅结束/次日截止、手动跨日结束、周期地点例外、已有活动前后衔接与最终路段去重。
