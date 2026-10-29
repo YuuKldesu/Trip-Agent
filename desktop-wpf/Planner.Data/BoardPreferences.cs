@@ -11,6 +11,7 @@ public sealed class BoardPreferences
     public bool SidebarExpanded {get;set;}
     public bool TablesPanelOpen {get;set;}
     public bool AssistantPanelOpen {get;set;}
+    public double AssistantWidth {get;set;}=380;
     public HashSet<string> HiddenTables {get;set;}=[];
     public double FullWidth {get;set;}=1480;
     public double FullHeight {get;set;}=920;
@@ -31,6 +32,7 @@ public sealed class BoardPreferenceStore(string directory)
         try
         {
             if(!File.Exists(path))return new();var value=JsonSerializer.Deserialize<BoardPreferences>(File.ReadAllText(path),JsonKit.Options)??new();
+            if(!double.IsFinite(value.AssistantWidth)||value.AssistantWidth is <280 or >700)value.AssistantWidth=380;
             if(value.View is not("MONTH" or "LIST"))value.View="MONTH";
             value.Completed=Keys(value.Completed);value.Important=Keys(value.Important);
             value.HiddenTables=Keys(value.HiddenTables);if(string.IsNullOrWhiteSpace(value.Nickname)||value.Nickname.Length>40)value.Nickname="我的空间";if(value.Avatar is not("我" or "行" or "旅"))value.Avatar="我";

@@ -28,6 +28,7 @@ public sealed class GuidedConversation
     public string ActiveBranchId {get;set;}
     public List<ConversationBranch> Branches {get;set;}=[];
     public List<GeneratedBatchReceipt> Batches {get;set;}=[];
+    public Dictionary<string,string> Drafts {get;set;}=[];
     [JsonIgnore] public ConversationBranch Active=>Branches.First(b=>b.Id==ActiveBranchId);
     public GuidedConversation(){var b=new ConversationBranch();Branches.Add(b);ActiveBranchId=b.Id;}
     public ConversationBranch NewBranch(){var b=new ConversationBranch{Name="新对话 "+(Branches.Count+1)};Branches.Add(b);ActiveBranchId=b.Id;return b;}
