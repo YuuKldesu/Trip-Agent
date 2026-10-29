@@ -14,3 +14,7 @@
 - User addition 2026-10-29: remove native window border/titlebar and provide warm application chrome with drag, resize, minimize/maximize/close. Add native window checks and include this in final review.
 - Task 5: pending.
 - Chrome and delivery: core 105/105 and native 97/97 passed with final selection guard; publish 0 warnings/errors and standalone smoke exit 0. Evidence: tmp/guided-native-release-20261029 and tmp/guided-release-smoke-20261029. Final review and extracted archive smoke pending.
+- Final: fixed local fallback superseded date/duration — local guide does not confirm superseded fields and accepts consolidated corrections RED 105/106 -> GREEN 106/106; conflicting partial corrections ask for restatement, complete latest restatement replaces old fields.
+- Final: fixed minimum review layout after reviewer measurement recommendation — 760x600/22 new table native RED activity viewport54 -> GREEN464, footer remains reachable; full native98/98.
+- Final: minor (deferred): StyledDateEntry button label follows locale (e.g. 11/8/2026); popup and final confirmation show explicit full date. No semantic date error.
+- Final review: one fresh whole-branch read-only reviewer; no Critical issues; Important corrected in one fix pass; no declined-to-judge behaviors. Full report/rulings in FINAL_REVIEW.md.

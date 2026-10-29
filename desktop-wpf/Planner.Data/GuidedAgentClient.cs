@@ -48,12 +48,20 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
     }
     public static GuidedReply LocalReply(IReadOnlyList<ConversationMessage> messages,DateOnly today)
     {
-        string text=string.Join("\n",messages.Where(m=>m.Role=="user").Select(m=>m.Content));var missing=new List<string>();
-        if(!Regex.IsMatch(text,@"今天|明天|后天|\d{4}[-年/]\d{1,2}[-月/]\d{1,2}|\d{1,2}月\d{1,2}[日号]"))missing.Add("日期");
-        if(!Regex.IsMatch(text,@"(?:在|去|到)[\u4e00-\u9fa5A-Za-z0-9]+?(?:看|吃|参观|游览|开会|学习|逛|拍照|办|做|玩|，|,|\s)"))missing.Add("具体地点和事项");
-        if(!Regex.IsMatch(text,@"\d+(?:\.\d+)?\s*(?:个?小时|分钟)"))missing.Add("每项耗时");
-        var reply=new GuidedReply{Summary=string.Join("；",messages.Where(m=>m.Role=="user").Select(m=>m.Content)),Missing=missing};
+        const string datePattern=@"今天|明天|后天|\d{4}[-年/]\d{1,2}[-月/]\d{1,2}日?|\d{1,2}月\d{1,2}[日号]";
+        const string placePattern=@"(?:在|去|到)[\u4e00-\u9fa5A-Za-z0-9]+?(?:看|吃|参观|游览|开会|学习|逛|拍照|办|做|玩|，|,|\s)";
+        const string durationPattern=@"\d+(?:\.\d+)?\s*(?:个?小时|分钟)(?!\s*提醒)";
+        var users=messages.Where(m=>m.Role=="user").Select(m=>m.Content).ToList();string allText=string.Join("\n",users);
+        // A complete restatement supersedes earlier structural fields. Partial conflicting
+        // corrections require confirmation rather than silently choosing the old value.
+        int restated=users.FindLastIndex(s=>Regex.IsMatch(s,datePattern)&&Regex.IsMatch(s,placePattern)&&Regex.IsMatch(s,durationPattern));
+        string text=string.Join("\n",users.Skip(Math.Max(0,restated)));var missing=new List<string>();
+        if(!Regex.IsMatch(text,datePattern))missing.Add("日期");
+        if(!Regex.IsMatch(text,placePattern))missing.Add("具体地点和事项");
+        if(!Regex.IsMatch(text,durationPattern))missing.Add("每项耗时");
+        var reply=new GuidedReply{Summary=text.Replace("\n","；"),Missing=missing};
+        if(new[]{datePattern,placePattern,durationPattern,@"(?:上午|下午|晚上|中午)?\s*\d{1,2}(?:点|:)\d{0,2}"}.Any(pattern=>Regex.Matches(text,pattern).Select(m=>m.Value.Trim()).Distinct().Skip(1).Any())){reply.Missing=["修改后的完整安排"];reply.Message="我看到前后有不同的安排。本地规则需要再确认一次：请把最终日期、地点、事项和耗时放在一句话里，例如“今天在南京博物院参观，1小时”；也可以在设置连接模型继续自由对话。";return reply;}
         if(missing.Count>0){reply.Message=missing[0]=="日期"?"这次具体安排在哪一天？例如明天，或写明年月日。":missing[0]=="具体地点和事项"?"日期我记住了。接下来想去哪里、做什么？可以说“在南京博物院参观”。":"地点和事项已记住。预计需要多久？例如2小时；如果还有其他事项，也可以一起补充。";return reply;}
-        try{var request=RepositoryAgentClient.ParseLocal(text,today);request.Notes=text;var modes=Regex.Matches(text,"公交|地铁|步行|骑行|自驾|驾车|打车").Select(m=>m.Value switch{"地铁"=>"公交","自驾" or "打车"=>"驾车",_=>m.Value}).Distinct().ToList();if(modes.Count==1)request.ModeIn=modes[0];var reminder=Regex.Matches(text,@"不要提醒|无需提醒|不提醒|提前\s*(\d+)\s*分钟提醒|需要提醒|提醒我").LastOrDefault();if(reminder is not null){request.ReminderEnabled=!Regex.IsMatch(reminder.Value,"不要|无需|不提醒");if(reminder.Groups[1].Success)request.ReminderLeadMin=int.Parse(reminder.Groups[1].Value);}RepositoryPlanner.Validate(request);reply.Events=[request];reply.Ready=true;reply.Message="信息已足够安排这一项活动。请核对需求汇总，再生成草稿；具体地点与交通将在下一步确认。";}catch(ArgumentException e){reply.Missing=["需要进一步确认的活动细节"];reply.Message="本地规则暂不能可靠理解这组安排。"+e.Message+"你可以把单项活动的日期、地点和耗时补充清楚，或在设置中连接模型以继续多项行程对话。";}return reply;
+        try{var request=RepositoryAgentClient.ParseLocal(Regex.Replace(text,@"提前\s*\d+\s*分钟提醒",""),today);request.Notes=allText;var modes=Regex.Matches(allText,"公交|地铁|步行|骑行|自驾|驾车|打车").Select(m=>m.Value switch{"地铁"=>"公交","自驾" or "打车"=>"驾车",_=>m.Value}).Distinct().ToList();if(modes.Count==1)request.ModeIn=modes[0];var reminder=Regex.Matches(allText,@"不要提醒|无需提醒|不提醒|提前\s*(\d+)\s*分钟提醒|需要提醒|提醒我").LastOrDefault();if(reminder is not null){request.ReminderEnabled=!Regex.IsMatch(reminder.Value,"不要|无需|不提醒");if(reminder.Groups[1].Success)request.ReminderLeadMin=int.Parse(reminder.Groups[1].Value);}RepositoryPlanner.Validate(request);reply.Events=[request];reply.Ready=true;reply.Message="信息已足够安排这一项活动。请核对需求汇总，再生成草稿；具体地点与交通将在下一步确认。";}catch(ArgumentException e){reply.Missing=["需要进一步确认的活动细节"];reply.Message="本地规则暂不能可靠理解这组安排。"+e.Message+"你可以把单项活动的日期、地点和耗时补充清楚，或在设置中连接模型以继续多项行程对话。";}return reply;
     }
 }
