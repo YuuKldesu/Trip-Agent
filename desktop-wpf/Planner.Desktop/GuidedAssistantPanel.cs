@@ -19,7 +19,7 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
         conversation.Drafts??=[];
         var head=new DockPanel{Margin=new(0,0,0,8)};DockPanel.SetDock(head,Dock.Top);Children.Add(head);
         Button Icon(string glyph,string title,Action action){var button=ShellIcons.Button(glyph,title,()=>Ui.Safe(action),"Assistant:"+title);button.MinHeight=32;button.Padding=new(7);DockPanel.SetDock(button,Dock.Right);head.Children.Add(button);return button;}
-        Icon("\uE712","更多",()=>{var menu=new ContextMenu();var settings=new MenuItem{Header="智能服务设置"};settings.Click+=(_,_)=>{if(owner is MainWindow main)main.OpenSettingsCategory("ai");};menu.Items.Add(settings);var copy=new MenuItem{Header="复制当前对话"};copy.Click+=(_,_)=>Clipboard.SetText(string.Join("\n\n",conversation.Active.Messages.Select(m=>(m.Role=="user"?"你":"助手")+"："+m.Content)));menu.Items.Add(copy);menu.PlacementTarget=head;menu.IsOpen=true;});
+        Icon("\uE712","更多",()=>{var menu=new ContextMenu();var settings=new MenuItem{Header="智能服务设置"};settings.Click+=(_,_)=>{if(owner is MainWindow main)main.OpenSettingsCategory("ai");};menu.Items.Add(settings);menu.PlacementTarget=head;menu.IsOpen=true;});
         Icon("\uE81C","会话历史",()=>OpenHistory(head));Icon("\uE70F","新对话",()=>{SaveDraft();CancelRequest();Persist(()=>conversation.NewBranch());editId=null;input.Text="";followLatest=true;Render();input.Focus();});head.Children.Add(Ui.Text("行程助手",15,true));
         branches.Tag="ConversationBranches";
         var bottom=new StackPanel();DockPanel.SetDock(bottom,Dock.Bottom);Children.Add(bottom);latest.Visibility=Visibility.Collapsed;latest.HorizontalAlignment=HorizontalAlignment.Center;latest.Click+=(_,_)=>{followLatest=true;transcript?.ScrollToEnd();};bottom.Children.Add(latest);
@@ -69,8 +69,8 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
     void Bubble(string who,string text,string? id)
     {
         var panel=new StackPanel();panel.Children.Add(Ui.Text(who,10));var body=new TextBox{Text=text,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,BorderThickness=new(0),Background=Brushes.Transparent,Padding=new(0),Margin=new(0),IsReadOnlyCaretVisible=false};Typography.Set(body,13);panel.Children.Add(body);
-        var actions=new StackPanel{Orientation=Orientation.Horizontal};var copy=Ui.Button("复制",()=>Clipboard.SetText(text));copy.Padding=new(5,2,5,2);actions.Children.Add(copy);
-        if(id is not null){var edit=Ui.Button("编辑",()=>{SaveDraft();previousDraft=input.Text;editId=id;input.Text=conversation.Active.Messages.Single(m=>m.Id==id).Content;SetBusy();input.Focus();});edit.Tag="EditMessage:"+id;edit.Padding=new(5,2,5,2);actions.Children.Add(edit);}panel.Children.Add(actions);
+        var actions=new StackPanel{Orientation=Orientation.Horizontal};
+        if(id is not null){var edit=Ui.Button("编辑",()=>{SaveDraft();previousDraft=input.Text;editId=id;input.Text=conversation.Active.Messages.Single(m=>m.Id==id).Content;SetBusy();input.Focus();});edit.Tag="EditMessage:"+id;edit.Padding=new(5,2,5,2);actions.Children.Add(edit);panel.Children.Add(actions);}
         var bubble=new Border{Child=panel,Padding=new(10),CornerRadius=new(12),Margin=new(id is null?0:16,0,0,12),Background=id is null?Brushes.Transparent:Ui.Brush("#EEE7DF")};actions.Opacity=0;bubble.MouseEnter+=(_,_)=>actions.Opacity=1;bubble.MouseLeave+=(_,_)=>{if(!actions.IsKeyboardFocusWithin)actions.Opacity=0;};actions.GotKeyboardFocus+=(_,_)=>actions.Opacity=1;log.Children.Add(bubble);
     }
     void RenderReceipts()
