@@ -13,9 +13,12 @@ public sealed class StyledDateEntry:DatePicker
     public FrameworkElement? PlacementAnchor {get;set;}
     public StyledDateEntry()
     {
-        var button=new FrameworkElementFactory(typeof(Button));button.SetValue(Button.HorizontalContentAlignmentProperty,HorizontalAlignment.Left);
-        button.SetBinding(Button.ContentProperty,new System.Windows.Data.Binding(nameof(SelectedDate)){Source=this,StringFormat="{0:yyyy/MM/dd}",TargetNullValue="选择日期"});
-        button.AddHandler(Button.ClickEvent,new RoutedEventHandler((_,e)=>{OpenPicker();e.Handled=true;}));Template=new ControlTemplate(typeof(DatePicker)){VisualTree=button};
+        MinHeight=36;Padding=new(0);
+        var frame=new FrameworkElementFactory(typeof(Border));frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(8));frame.SetValue(Border.BackgroundProperty,AppTheme.Brush("Surface"));frame.SetValue(Border.BorderBrushProperty,AppTheme.Brush("Border"));frame.SetValue(Border.BorderThicknessProperty,new Thickness(1));
+        var button=new FrameworkElementFactory(typeof(Button));button.SetValue(Button.HorizontalContentAlignmentProperty,HorizontalAlignment.Stretch);button.SetValue(Button.PaddingProperty,new Thickness(10,6,10,6));button.SetValue(Button.MarginProperty,new Thickness(0));button.SetValue(Button.BackgroundProperty,Brushes.Transparent);button.SetValue(Button.MinHeightProperty,34d);
+        var row=new FrameworkElementFactory(typeof(DockPanel));var icon=new FrameworkElementFactory(typeof(TextBlock));icon.SetValue(DockPanel.DockProperty,Dock.Right);icon.SetValue(TextBlock.TextProperty,"\uE787");icon.SetValue(TextBlock.FontFamilyProperty,new FontFamily("Segoe MDL2 Assets"));icon.SetValue(TextBlock.FontSizeProperty,16d);icon.SetValue(TextBlock.MarginProperty,new Thickness(10,0,0,0));icon.SetValue(TextBlock.VerticalAlignmentProperty,VerticalAlignment.Center);row.AppendChild(icon);
+        var label=new FrameworkElementFactory(typeof(TextBlock));label.SetValue(TextBlock.VerticalAlignmentProperty,VerticalAlignment.Center);label.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding(nameof(SelectedDate)){Source=this,StringFormat="{0:yyyy/MM/dd}",TargetNullValue="选择日期"});row.AppendChild(label);button.AppendChild(row);frame.AppendChild(button);
+        button.AddHandler(Button.ClickEvent,new RoutedEventHandler((_,e)=>{OpenPicker();e.Handled=true;}));Template=new ControlTemplate(typeof(DatePicker)){VisualTree=frame};
         Unloaded+=(_,_)=>{if(picker is not null)picker.IsOpen=false;};
     }
     public void OpenPicker()

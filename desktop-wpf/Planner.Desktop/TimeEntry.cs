@@ -13,9 +13,10 @@ public sealed class TimeEntry:UserControl
     public event Action<DateTime>? DateTimeChanged;
     public TimeEntry(string value)
     {
-        var grid=new Grid();grid.ColumnDefinitions.Add(new());grid.ColumnDefinitions.Add(new(){Width=GridLength.Auto});Content=grid;
-        input=Ui.Input(value);grid.Children.Add(input);input.TextChanged+=(_,_)=>Changed?.Invoke();
-        var open=Ui.Button("◷",OpenPicker);open.ToolTip="滚轮选择时间";open.Padding=new(9,6,9,6);Grid.SetColumn(open,1);grid.Children.Add(open);input.PreviewMouseLeftButtonUp+=(_,e)=>{OpenPicker();e.Handled=true;};
+        Margin=new(0,3,0,8);MinHeight=36;
+        var grid=new Grid();Content=new Border{CornerRadius=new(8),Background=AppTheme.Brush("Surface"),BorderBrush=AppTheme.Brush("Border"),BorderThickness=new(1),Child=grid};
+        input=Ui.Input(value);input.Margin=new(0);input.Padding=new(10,6,36,6);input.BorderThickness=new(0);input.Background=System.Windows.Media.Brushes.Transparent;input.MinHeight=34;grid.Children.Add(input);input.TextChanged+=(_,_)=>Changed?.Invoke();
+        var icon=ShellIcons.Glyph("\uE823",16);icon.HorizontalAlignment=HorizontalAlignment.Right;icon.Margin=new(0,0,10,0);icon.IsHitTestVisible=false;grid.Children.Add(icon);ToolTip="点击选择时间，也可输入 HH:mm";input.PreviewMouseLeftButtonUp+=(_,e)=>{OpenPicker();e.Handled=true;};
         PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape&&popup?.IsOpen==true){popup.IsOpen=false;e.Handled=true;}else if(e.Key==Key.Down&&(Keyboard.Modifiers&ModifierKeys.Alt)!=0){OpenPicker();e.Handled=true;}};Unloaded+=(_,_)=>{if(popup is not null)popup.IsOpen=false;};
     }
     public void OpenPicker()

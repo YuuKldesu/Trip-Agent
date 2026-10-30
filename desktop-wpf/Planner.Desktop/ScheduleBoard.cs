@@ -10,7 +10,7 @@ namespace Planner.Desktop;
 public sealed class ScheduleBoard:Grid
 {
     const string BackgroundColor="#F5F3F0",Accent="#C65B40";
-    readonly PlannerViewModel vm;BoardPreferences preferences;
+    readonly PlannerViewModel vm;BoardPreferences preferences;Dictionary<string,TrafficSnapshot> trafficSnapshots=[];
     readonly Grid header=new(),body=new();readonly Button caption;readonly StackPanel monthNavigation=new(){Orientation=Orientation.Horizontal};readonly Dictionary<string,Button> modeButtons=[];
     ScrollViewer? scroll;Grid? monthGrid;readonly List<(DateOnly Date,FrameworkElement Heading)> listHeadings=[];
     readonly Dictionary<string,(string Key,UIElement Content,ScrollViewer? Scroll,List<(DateOnly Date,FrameworkElement Heading)> Headings)> cache=[];
@@ -103,7 +103,7 @@ public sealed class ScheduleBoard:Grid
             monthNavigation.Visibility=compact||view=="MONTH"?Visibility.Visible:Visibility.Collapsed;
             body.Children.Clear();
             if(cache.TryGetValue(ViewMode,out var cached)&&cached.Key==key){body.Children.Add(cached.Content);scroll=cached.Scroll;monthGrid=scroll?.Content as Grid;listHeadings.Clear();listHeadings.AddRange(cached.Headings);UpdateSelectedDay();caption.Content=compact?$"{agendaDate:M月d日}":view=="MONTH"?$"{month.Year} 年 {month.Month} 月":"全部行程 · 按日期";UpdateModes();resetScroll=false;var reused=scroll;Dispatcher.BeginInvoke(()=>{if(ReferenceEquals(scroll,reused)){FitRows();reused?.ScrollToHorizontalOffset(position.Item1);reused?.ScrollToVerticalOffset(position.Item2);JumpToListDate();UpdateListCaption();}},System.Windows.Threading.DispatcherPriority.Loaded);return;}
-            monthGrid=null;scroll=null;listHeadings.Clear();
+            monthGrid=null;scroll=null;listHeadings.Clear();trafficSnapshots=new TrafficSnapshotStore(vm.DataDirectory).Load();
             UpdateModes();caption.Content=compact?$"{agendaDate:M月d日}":$"{month.Year} 年 {month.Month} 月";
             if(compact)BuildAgenda();else if(view=="MONTH")BuildMonth();else BuildList();
             cache[ViewMode]=(key,body.Children[0],scroll,listHeadings.ToList());
@@ -118,7 +118,18 @@ public sealed class ScheduleBoard:Grid
     IEnumerable<string> VisibleTables()=>vm.State.Tables.Where(t=>!vm.HiddenTables.Contains(t.Id)).Select(t=>t.Id);
     Dictionary<string,List<Conflict>> Conflicts(DateOnly from,DateOnly until)
     {
-        var result=new Dictionary<string,List<Conflict>>();foreach(var c in CalendarEngine.AllConflicts(vm.State,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)))foreach(var key in new[]{c.FirstKey,c.SecondKey}.Where(k=>k is not null).Cast<string>()){if(!result.TryGetValue(key,out var list))result[key]=list=[];list.Add(c);}return result;
+        var result=new Dictionary<string,List<Conflict>>();var occurrences=CalendarEngine.Expand(vm.State,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)).ToDictionary(o=>o.Key);
+        foreach(var original in CalendarEngine.AllConflicts(vm.State,from.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)))
+        {
+            var c=original;
+            if(c.Kind!="TIME_OVERLAP"&&c.SecondKey is {} second&&occurrences.TryGetValue(c.FirstKey,out var first)&&occurrences.TryGetValue(second,out var next))
+            {
+                var pair=new TrafficPair(first,next);var check=trafficSnapshots.GetValueOrDefault(pair.Fingerprint(vm.State));
+                if(check?.Minutes is {} minutes){if(minutes<=pair.GapMinutes)continue;c=new("TRAVEL_SHORT",first.Key,next.Key,AdjacentTraffic.Label(pair,check));}
+            }
+            foreach(var key in new[]{c.FirstKey,c.SecondKey}.Where(k=>k is not null).Cast<string>()){if(!result.TryGetValue(key,out var list))result[key]=list=[];list.Add(c);}
+        }
+        return result;
     }
     void BuildMonth()
     {
@@ -163,15 +174,29 @@ public sealed class ScheduleBoard:Grid
         scroll=new(){Content=panel,PanningMode=PanningMode.VerticalOnly,VerticalScrollBarVisibility=ScrollBarVisibility.Visible,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};scroll.ScrollChanged+=(_,e)=>{UpdateListCaption();if(e.VerticalChange>0&&scroll is {} current&&current.ScrollableHeight>0&&current.VerticalOffset>=current.ScrollableHeight-120&&vm.State.Rules.Any(r=>r.ValidUntil is null&&vm.State.Activities.Any(a=>a.Id==r.ActivityId&&!vm.HiddenTables.Contains(a.TableId)))){listHorizon=listHorizon.AddDays(180);Dispatcher.BeginInvoke(()=>Render());}};body.Children.Add(scroll);
         caption.Content="全部行程 · 按日期";
         if(days.All(d=>d.Entries.Count==0)){panel.Children.Add(Ui.Text("没有符合显示设置的行程",18,true));panel.Children.Add(Button("＋ 添加行程",()=>Add(vm.SelectedDate)));}
+        var trafficChecks=trafficSnapshots;BoardEntry? previousActivity=null;
         foreach(var day in days)
         {
             var heading=new DockPanel{Margin=new(0,16,0,10)};var count=Ui.Text(day.Entries.Count+" 项",12);count.Foreground=Ui.Brush("#A39A90");DockPanel.SetDock(count,Dock.Right);heading.Children.Add(count);heading.Children.Add(Ui.Text($"{day.Date.Day}  周{new[]{"一","二","三","四","五","六","日"}[((int)day.Date.DayOfWeek+6)%7]}    {day.Date:yyyy年M月}",17,true));panel.Children.Add(heading);listHeadings.Add((day.Date,heading));
             if(day.Date==displayToday&&day.Entries.Count==0){panel.Children.Add(Ui.Text("今天暂无安排",13));panel.Children.Add(Button("＋ 添加今天的行程",()=>Add(displayToday)));}
-            BoardEntry? previous=null;
             foreach(var entry in day.Entries)
             {
-                if(previous is not null){int gap=(int)(entry.Start-previous.End).TotalMinutes;if(gap is >0 and <60){var gapText=Ui.Text($"◷  间隔 {gap} 分钟（含交通）",11,true);gapText.Foreground=Ui.Brush(Accent);panel.Children.Add(new Border{Background=Ui.Brush("#FAECE6"),Padding=new(9,3,9,0),Margin=new(104,0,0,7),HorizontalAlignment=HorizontalAlignment.Left,Child=gapText});}}
-                panel.Children.Add(TimelineRow(entry,conflicts));previous=entry;
+                if(entry.Transfer is null&&previousActivity is {} previous&&previous.Occurrence.Key!=entry.Occurrence.Key)
+                {
+                    var pair=new TrafficPair(previous.Occurrence,entry.Occurrence);int gap=pair.GapMinutes;var snapshot=trafficChecks.GetValueOrDefault(pair.Fingerprint(vm.State));
+                    if(snapshot is null)
+                    {
+                        var leg=vm.State.Legs.FirstOrDefault(l=>l.FromActivityId==pair.From.Activity.Id&&l.FromOriginDate==pair.From.OriginDate&&l.ToActivityId==pair.To.Activity.Id&&l.ToOriginDate==pair.To.OriginDate&&l.ValidationStatus=="VALID"&&l.DepartAt>=pair.From.End&&l.ArriveAt<=pair.To.Start);
+                        if(leg is not null)snapshot=new(){Minutes=(int)Math.Ceiling((leg.ArriveAt-leg.DepartAt).TotalMinutes),Source="已保存的地图路线快照"};
+                    }
+                    bool warning=snapshot?.Minutes is {} minutes&&minutes>gap;
+                    if(gap>=0&&(gap<60||warning))
+                    {
+                        var gapText=Ui.Text("◷  "+AdjacentTraffic.Label(pair,snapshot),11,warning);gapText.Foreground=AppTheme.Brush(warning?"Danger":"Muted");gapText.Margin=new(0);
+                        panel.Children.Add(new Border{Background=AppTheme.Brush(warning?"Selected":"Panel"),Padding=new(9,6,9,6),Margin=new(Math.Max(94,58*Typography.Scale)+8,0,0,7),HorizontalAlignment=HorizontalAlignment.Left,Child=gapText,ToolTip=snapshot?.Source??"这里只表示时间间隔，尚未查询交通时间。"});
+                    }
+                }
+                panel.Children.Add(TimelineRow(entry,conflicts));if(entry.Transfer is null)previousActivity=entry;
             }
         }
     }
@@ -200,7 +225,7 @@ public sealed class ScheduleBoard:Grid
         panel.Children.Add(Muted("地点："+vm.State.PlaceName(o.PlaceId),12));panel.Children.Add(Muted(entry.DurationText,11));if(entry.ContinuityText.Length>0)panel.Children.Add(Muted(entry.ContinuityText,11));
         if(!string.IsNullOrWhiteSpace(o.Activity.Note))panel.Children.Add(Muted("备注："+o.Activity.Note,12));
         var tableLabel=Muted(table.Name+(o.OriginDate is null?"":" · 每周")+(!active?" · 未生效":""),11);tableLabel.Foreground=AppTheme.TableText(table.Color);panel.Children.Add(tableLabel);
-        if(warnings is {Count:>0}){var warning=Ui.Text(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"! 时间冲突":"◷ 交通待核验",11,true);warning.Foreground=Ui.Brush(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"#AF5146":"#986638");warning.Margin=new(0,3,0,0);panel.Children.Add(warning);}
+        if(warnings is {Count:>0}){var warning=Ui.Text(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"! 时间冲突":warnings.Any(w=>w.Kind=="TRAVEL_SHORT")?"! 交通时间不足":"◷ 交通待核验",11,true);warning.Foreground=Ui.Brush(warnings.Any(w=>w.Kind=="TIME_OVERLAP")?"#AF5146":"#986638");warning.Margin=new(0,3,0,0);panel.Children.Add(warning);}
         card.Child=panel;card.SetState(preferences.Completed.Contains(o.Key),preferences.Important.Contains(o.Key));
         card.ToggleRequested+=()=>Ui.Safe(()=>ToggleCompleted(o.Key));card.ImportantRequested+=()=>Ui.Safe(()=>vm.UpdateAppearance(p=>{if(!p.Important.Add(o.Key))p.Important.Remove(o.Key);}));card.EditRequested+=()=>{SelectOccurrence(o);EditRequested?.Invoke(o);};
         var menu=new ContextMenu();menu.Opened+=(_,_)=>

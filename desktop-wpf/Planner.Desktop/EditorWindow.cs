@@ -4,13 +4,15 @@ using System.Windows.Input;
 using Planner.Core;
 using Activity=Planner.Core.Activity;
 namespace Planner.Desktop;
-public sealed class EditorWindow:Window
+public sealed partial class EditorWindow:Window
 {
     public DateOnly? SavedDate {get;private set;}
     readonly PlannerViewModel vm;readonly Occurrence? occurrence;readonly long openedRevision;readonly CancellationTokenSource cancel=new();
     readonly TextBox title,place,windowStart,windowEnd,note,lead;readonly TimeEntry start,end;
-    readonly DatePicker date,endDate,until;readonly ComboBox table,kind,constraint,scope,mode;
-    readonly CheckBox reminder=new(){Content="启用提醒"},overnight=new(){Content="结束于次日"},checkTravel=new(){Content="保存前核验相邻交通"};readonly CheckBox[] weekdays;
+    readonly DatePicker date,endDate,until;readonly ComboBox table,kind,constraint,scope;
+    readonly CheckBox reminder=new(){Content="启用提醒"},overnight=new(){Content="结束于次日"};readonly CheckBox[] weekdays;
+    readonly StackPanel form=new();
+    readonly TextBlock trafficHint=Ui.Text("保存时自动检查前后行程是否来得及；缺少信息时再询问。",11);
     readonly TextBlock durationLabel=Ui.Text("",12),status=Ui.Text("",11);bool closing,syncingTimes;DateTime previousStart;
     public EditorWindow(PlannerViewModel model,Occurrence? item=null,DateTime? initial=null)
     {
@@ -18,8 +20,8 @@ public sealed class EditorWindow:Window
         var area=SystemParameters.WorkArea;Width=Math.Min(Width,area.Width);Height=Math.Min(Height,area.Height);MinWidth=Math.Min(MinWidth,area.Width);MinHeight=Math.Min(MinHeight,area.Height);
         var outer=new DockPanel{Margin=new(20)};Content=outer;
         var footer=new Grid{Margin=new(0,12,0,0)};footer.ColumnDefinitions.Add(new());footer.ColumnDefinitions.Add(new(){Width=GridLength.Auto});DockPanel.SetDock(footer,Dock.Bottom);outer.Children.Add(footer);var actions=Ui.Row(Ui.Button("取消",Close));Grid.SetColumn(actions,1);footer.Children.Add(actions);status.MinWidth=0;footer.Children.Add(status);
-        var save=Ui.Button("保存",()=>{},true);actions.Children.Add(save);save.Click+=async(_,_)=>{if(closing)return;save.IsEnabled=false;status.Text="正在核对…";try{await SaveAsync();}catch(OperationCanceledException){}catch(Exception ex){status.Text=ex.Message;}finally{if(!closing){save.IsEnabled=true;}}};
-        var panel=new StackPanel();outer.Children.Add(new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalContentAlignment=HorizontalAlignment.Stretch});
+        var save=Ui.Button("保存",()=>{},true);actions.Children.Add(save);save.Click+=async(_,_)=>{if(closing)return;save.IsEnabled=false;form.IsEnabled=false;status.Text="正在检查前后行程…";try{await SaveAsync();}catch(OperationCanceledException){if(!closing)status.Text="已返回编辑，尚未保存。";}catch(Exception ex){status.Text=ex.Message;}finally{if(!closing){save.IsEnabled=true;form.IsEnabled=true;}}};
+        var panel=form;outer.Children.Add(new ScrollViewer{Content=panel,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalContentAlignment=HorizontalAlignment.Stretch});
         var actualStart=item?.Start??initial??vm.SelectedDate.ToDateTime(new(9,0));var actualEnd=item?.End??actualStart.AddHours(1);
         title=Ui.Input(item?.Title??"");title.Tag="ActivityTitle";Typography.Set(title,22);title.FontWeight=FontWeights.SemiBold;Ui.Field(panel,item is null?"添加一项安排":"调整这项安排",title);
         panel.Children.Add(Ui.Text(item is null?"填写活动、日期与时间，其他信息可以稍后完善。":new Planner.Data.BoardPreferenceStore(vm.DataDirectory).Load().Completed.Contains(item.Key)?"已完成":"待进行",12));
@@ -29,7 +31,7 @@ public sealed class EditorWindow:Window
         start.Changed+=StartChanged;end.Changed+=EndChanged;start.DateTimeChanged+=_=>StartChanged();end.DateTimeChanged+=_=>EndChanged();
         date.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&date.SelectedDate is {} d){start.DateContext=d.Date;StartChanged();}};endDate.SelectedDateChanged+=(_,_)=>{if(!syncingTimes&&endDate.SelectedDate is {} d){end.DateContext=d.Date;EndChanged();}};
         var quick=new WrapPanel();foreach(int minutes in new[]{30,60,90,120}){int duration=minutes;quick.Children.Add(Ui.Button(minutes+" 分钟",()=>{if(TimeOnly.TryParseExact(start.Text,"HH:mm",out var st)&&date.SelectedDate is {} d)SetEnd(d.Date.Add(st.ToTimeSpan()).AddMinutes(duration));}));}quick.Children.Add(durationLabel);panel.Children.Add(quick);
-        mode=Ui.Choices(["公交","步行","骑行","驾车"]);checkTravel.IsChecked=item?.PlaceId is {} pid&&vm.State.Places.Any(p=>p.Id==pid&&p.Lng is not null);var travelRow=new WrapPanel();travelRow.Children.Add(checkTravel);travelRow.Children.Add(mode);panel.Children.Add(travelRow);
+        panel.Children.Add(trafficHint);
         note=Ui.Input(item?.Activity.Note??"");note.AcceptsReturn=true;note.TextWrapping=TextWrapping.Wrap;note.MinHeight=90;Ui.Field(panel,"备注",note);
         table=new();foreach(var t in vm.State.Tables)table.Items.Add(new ComboBoxItem{Content=t.Name,Tag=t.Id});table.SelectedIndex=Math.Max(0,vm.State.Tables.FindIndex(t=>t.Id==(item?.Activity.TableId??vm.SelectedTableId)));
         kind=Ui.Choices(["具体某一天","每周重复"],item?.Activity.Kind=="WEEKLY"?1:0);constraint=Ui.Choices(["固定时间","允许规划时调整"],item?.Activity.ConstraintType=="FLEXIBLE"?1:0);scope=Ui.Choices(item?.Activity.Kind=="WEEKLY"?["仅这一次","从所选日期起调整整套规则"]:["此项活动"]);
@@ -86,19 +88,19 @@ public sealed class EditorWindow:Window
         var proposed=ChangeService.Apply(vm.State,[command],vm.State.Revision);
         var problems=EditConflictGuard.ForEdit(vm.State,proposed,day);
         if(problems.Count>0)throw new ArgumentException("所选时间或未来周期与已有行程冲突，请调整时间。\n"+string.Join("\n",problems.Take(4).Select(p=>p.Message)));
-        string routeSummary="交通尚未核验；可在地图与路线中完善。";
-        if(checkTravel.IsChecked==true)
+        var checks=new List<TrafficSnapshot>();
+        if(!AdjacentTraffic.SameTimingAndPlace(occurrence,begin,finish,targetPlace,vm.State))
         {
-            if(targetPlace is null)throw new ArgumentException("请填写地点后再核验交通。");
-            var map=new Planner.Data.RepositoryMap(new Planner.Data.SettingsStore(vm.DataDirectory).Load());
-            if(targetPlace.Lng is null){var places=await map.SearchAsync(place.Text.Trim(),cancel.Token);targetPlace=await RepositoryDialogs.ChoosePlace(this,places,cancel.Token);command.Place=targetPlace;command.Activity.PlaceId=targetPlace.Id;}
-            var r=new TripRequest{Day=day,Title=a.Title,Location=targetPlace.Name,Duration=a.DurationMin,Start=st.Hour*60+st.Minute,ModeIn=mode.Text};
-            if(overnight.IsChecked==true)throw new ArgumentException("跨日活动请取消相邻交通核验，之后分日完善路线。");
-            var checkedPlan=await RepositoryPlanner.PlanAsync(vm.State,[new(r,targetPlace)],(f,t,_,depart,token)=>map.TravelAsync(f,t,mode.Text,depart,token),cancel.Token,occurrence?.Key);
-            routeSummary=string.Join("\n",checkedPlan.Rows.Select(x=>$"前往：{x.Before.Minutes}分钟（{x.Before.Source}）；后续：{x.After.Minutes}分钟（{x.After.Source}）"));
-            proposed=ChangeService.Apply(vm.State,[command],openedRevision);
+            var candidates=CalendarEngine.ExpandForDisplay(proposed,begin.Date,finish.Date.AddDays(1));
+            var target=candidates.FirstOrDefault(o=>o.Start==begin&&o.End==finish&&o.Activity.Id==a.Id)
+                ??candidates.FirstOrDefault(o=>o.Start==begin&&o.End==finish&&o.Title==a.Title&&o.Activity.TableId==a.TableId);
+            if(target is not null&&proposed.Tables.Any(t=>t.Id==target.Activity.TableId&&t.Active(day)))
+            {
+                (proposed,checks)=await CheckAdjacentAsync(proposed,target,command);
+                problems=EditConflictGuard.ForEdit(vm.State,proposed,day);
+                if(problems.Count>0)throw new ArgumentException("地点或时间调整后与已有安排冲突，请返回修改。");
+            }
         }
-        if(!Ui.ConfirmReview($"活动：{a.Title}\n{begin:yyyy-MM-dd HH:mm} — {finish:MM-dd HH:mm}\n地点：{targetPlace?.Name??"尚未填写"}\n{routeSummary}\n\n确认保存？"))return;
         cancel.Token.ThrowIfCancellationRequested();if(vm.State.Revision!=openedRevision)throw new InvalidOperationException("行程已有变化，请重新打开编辑。");
         if(command.Scope=="FUTURE")
         {
@@ -107,6 +109,6 @@ public sealed class EditorWindow:Window
             if(!Ui.Confirm($"从 {command.SplitDate:yyyy-MM-dd} 起调整周期。\n此前记录不变；未来例外 {exceptions.Count} 项：\n{impact}\n"+(exceptions.Count>15?"其余同类例外按相同规则处理。\n":"")+"确认保存？"))return;
         }
         cancel.Token.ThrowIfCancellationRequested();if(vm.State.Revision!=openedRevision)throw new InvalidOperationException("行程已有变化，请重新打开编辑。");
-        vm.Persist(proposed);SavedDate=day;Close();
+        new Planner.Data.TrafficSnapshotStore(vm.DataDirectory).Save(checks);vm.Persist(proposed);SavedDate=day;Close();
     }
 }

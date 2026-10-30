@@ -77,7 +77,7 @@ Test("AI single-instance move between tables cannot be falsely previewed",()=>{v
 Test("Windows protected key roundtrip keeps plaintext out of saved JSON",()=>{if(!OperatingSystem.IsWindows())return;var key="only-a-local-test-value";var folder=Path.Combine(Path.GetTempPath(),"key-test-"+Guid.NewGuid());try{var store=new SettingsStore(folder);store.Save(new(){LlmKeyProtected=SettingsStore.Protect(key)});Equal(false,File.ReadAllText(Path.Combine(folder,"services.json")).Contains(key));Equal(key,SettingsStore.Unprotect(store.Load().LlmKeyProtected));}finally{File.Delete(Path.Combine(folder,"services.json"));if(Directory.Exists(folder))Directory.Delete(folder);}});
 Test("LLM selected inactive table supplies its name and editable occurrences only",()=>{var s=Weekly();s.Tables[0].Enabled=false;s.Tables.Add(new(){Id="private",Name="不授权的名称"});var scope=ScopeContext.Build(s,["work"],D(2),D(3));Equal(1,scope.Items.Count);Equal("工作",scope.Tables.Single().Name);Equal(false,scope.Tables.Single().Enabled);});
 
-BoardTests.Register(Test);
+BoardTests.Register(Test);TrafficTests.Register(Test);
 FeatureUiTests.Register(Test);
 SoftUiTests.Register(Test);
 GuidedPlannerTests.Register(Test);
