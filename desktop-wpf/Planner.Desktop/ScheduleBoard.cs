@@ -16,6 +16,7 @@ public sealed class ScheduleBoard:Grid
     readonly Dictionary<string,(string Key,UIElement Content,ScrollViewer? Scroll,List<(DateOnly Date,FrameworkElement Heading)> Headings)> cache=[];
     readonly Dictionary<string,(double X,double Y)> scrollPositions=[];string displayedView="";
     readonly StackPanel modes;readonly WrapPanel filters;readonly CheckBox completedFilter,incompleteFilter;readonly TextBlock heading;
+    DateOnly displayToday=Clock.Today,renderedToday;
     bool compact;DateOnly agendaDate=Clock.Today;long renderedRevision=-1;string renderedVisibility="";
     DateOnly month,lastSelection;DateOnly listHorizon=Clock.Today.AddDays(180);DateOnly? listJump;DateOnly? listVisibleDate;string view;bool resetScroll=true,rendering;
     public event Action<DateTime>? AddRequested;public event Action<Occurrence>? EditRequested;public event Action<Occurrence>? Selected;public event Action<Occurrence>? DeleteRequested;
@@ -26,7 +27,7 @@ public sealed class ScheduleBoard:Grid
     public ScheduleBoard(PlannerViewModel model)
     {
         vm=model;Background=Brushes.Transparent;preferences=vm.Appearance;view=preferences.View;
-        month=new(vm.SelectedDate.Year,vm.SelectedDate.Month,1);lastSelection=vm.SelectedDate;if(view=="LIST")listJump=Clock.Today;
+        month=new(vm.SelectedDate.Year,vm.SelectedDate.Month,1);lastSelection=vm.SelectedDate;if(view=="LIST")listJump=displayToday;
         Resources.MergedDictionaries.Add(new(){Source=new Uri("/NanjingPlanner;component/BoardStyles.xaml",UriKind.Relative)});
         var surface=new Grid();surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new(){Height=GridLength.Auto});surface.RowDefinitions.Add(new());Children.Add(new Border{CornerRadius=new(6),Background=Ui.Brush("#FBF7F0"),BorderBrush=Ui.Brush("#E5DDD3"),BorderThickness=new(1),Padding=new(9),Child=surface});header.Margin=new(4,2,2,7);surface.Children.Add(header);Grid.SetRow(body,2);surface.Children.Add(body);
         header.ColumnDefinitions.Add(new());header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
@@ -34,7 +35,7 @@ public sealed class ScheduleBoard:Grid
         caption=Button("",PickDate);caption.FontWeight=FontWeights.SemiBold;caption.ToolTip="点击选择日期";left.Children.Add(caption);
         var prev=Button("‹",()=>Shift(-1));Typography.Set(prev,22);prev.Padding=new(8,0,8,3);prev.ToolTip="上月";monthNavigation.Children.Add(prev);
         var next=Button("›",()=>Shift(1));Typography.Set(next,22);next.Padding=new(8,0,8,3);next.ToolTip="下月";monthNavigation.Children.Add(next);left.Children.Add(monthNavigation);
-        var today=Button("今天",()=>NavigateTo(Clock.Today));today.Background=AppTheme.Brush("Surface");left.Children.Add(today);
+        var today=Button("今天",()=>NavigateTo(displayToday));today.Background=AppTheme.Brush("Surface");left.Children.Add(today);
         modes=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Top};Grid.SetColumn(modes,1);header.Children.Add(modes);
         foreach(var (key,text) in new[]{("MONTH","月历"),("LIST","列表")}){var b=Button(text,()=>SetView(key));modeButtons[key]=b;modes.Children.Add(b);}
         filters=new WrapPanel{Margin=new(8,0,0,5)};Grid.SetRow(filters,1);surface.Children.Add(filters);
@@ -50,22 +51,34 @@ public sealed class ScheduleBoard:Grid
     {
         if(mode is not("MONTH" or "LIST"))throw new ArgumentException("未知看板视图。");
         if(mode==view)return;
-        listVisibleDate=null;if(mode=="LIST"){listJump=Clock.Today;resetScroll=true;}else resetScroll=false;vm.UpdateAppearance(p=>p.View=mode);
+        listVisibleDate=null;if(mode=="LIST"){listJump=displayToday;resetScroll=true;}else resetScroll=false;vm.UpdateAppearance(p=>p.View=mode);
     }
     public void NavigateTo(DateOnly date)
     {
         if(compact)agendaDate=date;month=new(date.Year,date.Month,1);listVisibleDate=null;listJump=date;if(date>listHorizon)listHorizon=date.AddDays(180);resetScroll=true;vm.FocusDate(date);
     }
+    // Called on the UI thread by the window timer and after resume/activation.
+    // Date is part of the cache key; completion-only updates must not reuse yesterday's headings.
+    public void CheckDateChange(DateOnly today)
+    {
+        if(today==displayToday)return;
+        var previous=displayToday;displayToday=today;cache.Clear();
+        bool following=vm.SelectedDate==previous;
+        if(agendaDate==previous)agendaDate=today;
+        if(following){if(month==new DateOnly(previous.Year,previous.Month,1))month=new(today.Year,today.Month,1);lastSelection=today;}
+        if(listHorizon<today.AddDays(180))listHorizon=today.AddDays(180);
+        if(following)vm.FocusDate(today);else vm.Notify();
+    }
     void Shift(int direction){if(compact){agendaDate=agendaDate.AddDays(direction);resetScroll=true;Render();return;}var basis=view=="LIST"&&listVisibleDate is {} date?new DateOnly(date.Year,date.Month,1):month;NavigateTo(basis.AddMonths(direction));}
     public void SetCompact(bool value){if(compact==value)return;compact=value;resetScroll=false;Render();}
     void SaveFilter(bool completed,bool incomplete)=>vm.UpdateAppearance(p=>{p.ShowCompleted=completed;p.ShowIncomplete=incomplete;});
     string VisibilityKey()=>string.Join(',',VisibleTables());
-    string CacheKey()=>$"{vm.State.Revision}|{month}|{listHorizon}|{agendaDate}|{VisibilityKey()}|{preferences.FontSize}|{preferences.ShowCompleted}|{preferences.ShowIncomplete}|{string.Join(',',preferences.Completed.Order())}|{string.Join(',',preferences.Important.Order())}";
+    string CacheKey()=>$"{displayToday}|{vm.State.Revision}|{month}|{listHorizon}|{agendaDate}|{VisibilityKey()}|{preferences.FontSize}|{preferences.ShowCompleted}|{preferences.ShowIncomplete}|{string.Join(',',preferences.Completed.Order())}|{string.Join(',',preferences.Important.Order())}";
     void OnChanged()
     {
         var old=preferences;preferences=vm.Appearance;bool sameView=old.View==preferences.View;view=preferences.View;
         completedFilter.IsChecked=preferences.ShowCompleted;incompleteFilter.IsChecked=preferences.ShowIncomplete;
-        if(sameView&&renderedRevision==vm.State.Revision&&renderedVisibility==VisibilityKey()&&lastSelection==vm.SelectedDate&&old.FontSize==preferences.FontSize&&old.ShowCompleted==preferences.ShowCompleted&&old.ShowIncomplete==preferences.ShowIncomplete&&preferences.ShowCompleted&&preferences.ShowIncomplete&&body.Children.Count>0)
+        if(renderedToday==displayToday&&sameView&&renderedRevision==vm.State.Revision&&renderedVisibility==VisibilityKey()&&lastSelection==vm.SelectedDate&&old.FontSize==preferences.FontSize&&old.ShowCompleted==preferences.ShowCompleted&&old.ShowIncomplete==preferences.ShowIncomplete&&preferences.ShowCompleted&&preferences.ShowIncomplete&&body.Children.Count>0)
         {
             foreach(var card in Descendants(body).OfType<SwipeActivityCard>()){var key=card.Entry.Occurrence.Key;card.SetState(preferences.Completed.Contains(key),preferences.Important.Contains(key),true);}
             cache.Clear();cache[ViewMode]=(CacheKey(),body.Children[0],scroll,listHeadings.ToList());return;
@@ -86,7 +99,7 @@ public sealed class ScheduleBoard:Grid
         {
             if(scroll is not null&&displayedView.Length>0)scrollPositions[displayedView]=(scroll.HorizontalOffset,scroll.VerticalOffset);
             var position=resetScroll?(0d,0d):scrollPositions.GetValueOrDefault(ViewMode);double offset=position.Item2;displayedView=ViewMode;
-            string key=CacheKey();renderedRevision=vm.State.Revision;renderedVisibility=VisibilityKey();heading.Text=compact?"今日行程":"行程看板";modes.Visibility=filters.Visibility=compact?Visibility.Collapsed:Visibility.Visible;
+            string key=CacheKey();renderedToday=displayToday;renderedRevision=vm.State.Revision;renderedVisibility=VisibilityKey();heading.Text=compact?"今日行程":"行程看板";modes.Visibility=filters.Visibility=compact?Visibility.Collapsed:Visibility.Visible;
             monthNavigation.Visibility=compact||view=="MONTH"?Visibility.Visible:Visibility.Collapsed;
             body.Children.Clear();
             if(cache.TryGetValue(ViewMode,out var cached)&&cached.Key==key){body.Children.Add(cached.Content);scroll=cached.Scroll;monthGrid=scroll?.Content as Grid;listHeadings.Clear();listHeadings.AddRange(cached.Headings);UpdateSelectedDay();caption.Content=compact?$"{agendaDate:M月d日}":view=="MONTH"?$"{month.Year} 年 {month.Month} 月":"全部行程 · 按日期";UpdateModes();resetScroll=false;var reused=scroll;Dispatcher.BeginInvoke(()=>{if(ReferenceEquals(scroll,reused)){FitRows();reused?.ScrollToHorizontalOffset(position.Item1);reused?.ScrollToVerticalOffset(position.Item2);JumpToListDate();UpdateListCaption();}},System.Windows.Threading.DispatcherPriority.Loaded);return;}
@@ -113,7 +126,7 @@ public sealed class ScheduleBoard:Grid
         var layout=new Grid();layout.RowDefinitions.Add(new(){Height=new(31)});layout.RowDefinitions.Add(new());body.Children.Add(layout);
         var weekdayViewport=new Border{ClipToBounds=true,Margin=new(0,0,SystemParameters.VerticalScrollBarWidth,0)};layout.Children.Add(weekdayViewport);
         var weekdays=new Grid{HorizontalAlignment=HorizontalAlignment.Left};weekdayViewport.Child=weekdays;
-        monthGrid=new Grid{Background=Ui.Brush("#EEEAE5"),MinWidth=840};
+        monthGrid=new Grid{Background=Ui.Brush("#EEEAE5"),MinWidth=MinimumMonthWidth};
         var renderedMonth=monthGrid;monthGrid.SizeChanged+=(_,_)=>weekdays.Width=renderedMonth.ActualWidth;
         for(int i=0;i<7;i++){weekdays.ColumnDefinitions.Add(new());monthGrid.ColumnDefinitions.Add(new());var text=Ui.Text(new[]{"周一","周二","周三","周四","周五","周六","周日"}[i],11,true);text.Foreground=Ui.Brush("#77716A");text.HorizontalAlignment=HorizontalAlignment.Center;text.Margin=new(0,6,0,0);Grid.SetColumn(text,i);weekdays.Children.Add(text);}
         for(int i=0;i<dates.Count/7;i++)monthGrid.RowDefinitions.Add(new(){Height=GridLength.Auto,MinHeight=88});
@@ -126,16 +139,17 @@ public sealed class ScheduleBoard:Grid
             var day=days[index];bool current=day.Date.Month==month.Month;var panel=new StackPanel();
             var cell=new Border{Background=AppTheme.Brush(current?"Surface":"Panel"),BorderBrush=AppTheme.Brush("Border"),BorderThickness=new(0,0,1,1),CornerRadius=new(0),Margin=new(0),Child=panel,Tag=day.Date};Grid.SetRow(cell,index/7);Grid.SetColumn(cell,index%7);monthGrid.Children.Add(cell);
             var daybar=new DockPanel();
-            var pick=Button(day.Date.Day+(day.Date==Clock.Today?" · 今天":""),()=>SelectDay(day.Date));pick.Tag=day.Date;pick.Padding=new(8,4,8,4);pick.Margin=new(5);pick.HorizontalAlignment=HorizontalAlignment.Left;pick.Background=day.Date==Clock.Today?AppTheme.Brush("Accent"):Brushes.Transparent;pick.HorizontalContentAlignment=HorizontalAlignment.Left;Typography.Set(pick,13);pick.FontWeight=FontWeights.SemiBold;pick.Foreground=AppTheme.Brush(day.Date==Clock.Today?"Canvas":current?"Text":"Muted");daybar.Children.Add(pick);panel.Children.Add(new Border{Background=Brushes.Transparent,CornerRadius=new(0),Child=daybar});
+            var pick=Button(day.Date.Day+(day.Date==displayToday?" · 今天":""),()=>SelectDay(day.Date));pick.Tag=day.Date;pick.Padding=new(8,4,8,4);pick.Margin=new(5);pick.HorizontalAlignment=HorizontalAlignment.Left;pick.Background=day.Date==displayToday?AppTheme.Brush("Accent"):Brushes.Transparent;pick.HorizontalContentAlignment=HorizontalAlignment.Left;Typography.Set(pick,13);pick.FontWeight=FontWeights.SemiBold;pick.Foreground=AppTheme.Brush(day.Date==displayToday?"Canvas":current?"Text":"Muted");daybar.Children.Add(pick);panel.Children.Add(new Border{Background=Brushes.Transparent,CornerRadius=new(0),Child=daybar});
             var activities=new StackPanel{Margin=new(5,2,5,5)};panel.Children.Add(activities);foreach(var entry in day.Entries)activities.Children.Add(ActivityCard(entry,false,conflicts));
             cell.MouseLeftButtonUp+=(_,e)=>{DependencyObject? target=e.OriginalSource as DependencyObject;while(target is not null&&target!=cell){if(target is ButtonBase or TextBox or CheckBox||target is Border{Tag:BoardEntry})return;target=VisualTreeHelper.GetParent(target);}Add(day.Date);e.Handled=true;};
             var menu=new ContextMenu();var item=new MenuItem{Header="添加当天行程"};item.Click+=(_,_)=>Add(day.Date);menu.Items.Add(item);cell.ContextMenu=menu;
         }
     }
+    double MinimumMonthWidth=>7*Math.Max(160,150*Typography.Scale);
     void FitRows()
     {
         if(monthGrid is null||scroll is null||monthGrid.RowDefinitions.Count==0)return;
-        double width=Math.Max(840,scroll.ActualWidth-SystemParameters.VerticalScrollBarWidth);monthGrid.Width=width;foreach(var col in monthGrid.ColumnDefinitions)col.Width=new GridLength(width/7);
+        double width=Math.Max(MinimumMonthWidth,scroll.ActualWidth-SystemParameters.VerticalScrollBarWidth);monthGrid.Width=width;foreach(var col in monthGrid.ColumnDefinitions)col.Width=new GridLength(width/7);
         double height=BoardLayout.RowMinimum(scroll.ViewportHeight>0?scroll.ViewportHeight:scroll.ActualHeight,monthGrid.RowDefinitions.Count);foreach(var row in monthGrid.RowDefinitions)if(Math.Abs(row.MinHeight-height)>.1)row.MinHeight=height;
     }
     void BuildList()
@@ -143,7 +157,7 @@ public sealed class ScheduleBoard:Grid
         var panel=new StackPanel{Margin=new(8,4,8,12)};
         var windows=ContinuousList.Windows(vm.State,listHorizon,VisibleTables());
         var days=windows.SelectMany(w=>DisplayDays(w.From,w.Until)).Where(d=>d.Entries.Count>0).ToList();
-        if(!days.Any(d=>d.Date==Clock.Today)){days.Add(new(Clock.Today,[]));days=days.OrderBy(d=>d.Date).ToList();}
+        if(!days.Any(d=>d.Date==displayToday)){days.Add(new(displayToday,[]));days=days.OrderBy(d=>d.Date).ToList();}
         var conflicts=new Dictionary<string,List<Conflict>>();
         foreach(var window in windows)foreach(var (key,items) in Conflicts(window.From,window.Until)){if(!conflicts.TryGetValue(key,out var existing))conflicts[key]=items;else existing.AddRange(items);}
         scroll=new(){Content=panel,PanningMode=PanningMode.VerticalOnly,VerticalScrollBarVisibility=ScrollBarVisibility.Visible,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};scroll.ScrollChanged+=(_,e)=>{UpdateListCaption();if(e.VerticalChange>0&&scroll is {} current&&current.ScrollableHeight>0&&current.VerticalOffset>=current.ScrollableHeight-120&&vm.State.Rules.Any(r=>r.ValidUntil is null&&vm.State.Activities.Any(a=>a.Id==r.ActivityId&&!vm.HiddenTables.Contains(a.TableId)))){listHorizon=listHorizon.AddDays(180);Dispatcher.BeginInvoke(()=>Render());}};body.Children.Add(scroll);
@@ -152,7 +166,7 @@ public sealed class ScheduleBoard:Grid
         foreach(var day in days)
         {
             var heading=new DockPanel{Margin=new(0,16,0,10)};var count=Ui.Text(day.Entries.Count+" 项",12);count.Foreground=Ui.Brush("#A39A90");DockPanel.SetDock(count,Dock.Right);heading.Children.Add(count);heading.Children.Add(Ui.Text($"{day.Date.Day}  周{new[]{"一","二","三","四","五","六","日"}[((int)day.Date.DayOfWeek+6)%7]}    {day.Date:yyyy年M月}",17,true));panel.Children.Add(heading);listHeadings.Add((day.Date,heading));
-            if(day.Date==Clock.Today&&day.Entries.Count==0){panel.Children.Add(Ui.Text("今天暂无安排",13));panel.Children.Add(Button("＋ 添加今天的行程",()=>Add(Clock.Today)));}
+            if(day.Date==displayToday&&day.Entries.Count==0){panel.Children.Add(Ui.Text("今天暂无安排",13));panel.Children.Add(Button("＋ 添加今天的行程",()=>Add(displayToday)));}
             BoardEntry? previous=null;
             foreach(var entry in day.Entries)
             {
@@ -209,8 +223,8 @@ public sealed class ScheduleBoard:Grid
         scroll=new(){Content=list,PanningMode=PanningMode.VerticalOnly,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};body.Children.Add(scroll);
         foreach(var day in days)
         {
-            string label=(day.Date==Clock.Today?"今天":day.Date==Clock.Today.AddDays(1)?"明天":day.Date.ToString("M月d日"))+" · 周"+new[]{"一","二","三","四","五","六","日"}[((int)day.Date.DayOfWeek+6)%7];
-            var group=new StackPanel();group.Children.Add(new Border{Background=Ui.Brush(day.Date==Clock.Today?"#AC5A4C":"#F4DFD9"),CornerRadius=new(15,15,0,0),Padding=new(12,7,12,5),Child=new TextBlock{Text=label,Foreground=Ui.Brush(day.Date==Clock.Today?"#FFFAF6":"#AC5A4C"),FontWeight=FontWeights.SemiBold,TextWrapping=TextWrapping.Wrap}});
+            string label=(day.Date==displayToday?"今天":day.Date==displayToday.AddDays(1)?"明天":day.Date.ToString("M月d日"))+" · 周"+new[]{"一","二","三","四","五","六","日"}[((int)day.Date.DayOfWeek+6)%7];
+            var group=new StackPanel();group.Children.Add(new Border{Background=Ui.Brush(day.Date==displayToday?"#AC5A4C":"#F4DFD9"),CornerRadius=new(15,15,0,0),Padding=new(12,7,12,5),Child=new TextBlock{Text=label,Foreground=Ui.Brush(day.Date==displayToday?"#FFFAF6":"#AC5A4C"),FontWeight=FontWeights.SemiBold,TextWrapping=TextWrapping.Wrap}});
             var content=new StackPanel{Margin=new(8)};foreach(var entry in day.Entries)content.Children.Add(TimelineRow(entry,conflicts));if(day.Entries.Count==0)content.Children.Add(Button("暂无安排 · 点击添加",()=>Add(day.Date)));group.Children.Add(content);
             list.Children.Add(new Border{Background=Ui.Brush("#EEEDEB"),CornerRadius=new(16),Margin=new(0,0,0,12),Child=group,Tag=day.Date});
         }

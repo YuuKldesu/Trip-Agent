@@ -14,7 +14,7 @@ public static class ShellIcons
         var row=new StackPanel{Orientation=Orientation.Horizontal};
         row.Children.Add(glyph==Menu?SidebarMark():Glyph(glyph));
         if(expanded)row.Children.Add(new TextBlock{Text=label,Margin=new(12,0,0,0),VerticalAlignment=VerticalAlignment.Center,MaxWidth=126});
-        var b=Ui.Button("",click);b.Content=row;b.Tag=tag;b.Style=(Style)Application.Current.FindResource("NavigationIconButton");b.MinHeight=44;b.Padding=new(10);b.HorizontalContentAlignment=HorizontalAlignment.Center;
+        var b=Ui.Button("",click);b.Content=row;b.Tag=tag;b.Style=(Style)Application.Current.FindResource("NavigationIconButton");b.MinHeight=44;b.Padding=expanded?new(10):new(6);b.Margin=new(0,2,0,2);b.HorizontalContentAlignment=expanded?HorizontalAlignment.Left:HorizontalAlignment.Center;
         var tip=new StackPanel{Orientation=Orientation.Horizontal};tip.Children.Add(new TextBlock{Text=label,VerticalAlignment=VerticalAlignment.Center});
         if(tag=="NavToggle")tip.Children.Add(new Border{CornerRadius=new(8),Background=Ui.Brush("#606060"),Padding=new(7,2,7,2),Margin=new(10,0,0,0),Child=new TextBlock{Text="Ctrl+B",Foreground=Brushes.White,FontSize=12,FontWeight=FontWeights.SemiBold}});
         b.ToolTip=new ToolTip{Content=tip,Placement=System.Windows.Controls.Primitives.PlacementMode.Right,HorizontalOffset=8};ToolTipService.SetInitialShowDelay(b,300);ToolTipService.SetShowDuration(b,10000);AutomationProperties.SetName(b,label);return b;

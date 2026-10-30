@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Planner.Core;
@@ -36,7 +36,10 @@ public sealed class EditorWindow:Window
         var rule=vm.State.Rules.FirstOrDefault(r=>r.ActivityId==item?.Activity.Id);weekdays=Enumerable.Range(0,7).Select(i=>new CheckBox{Content=new[]{"一","二","三","四","五","六","日"}[i],IsChecked=rule is not null&&(rule.WeekMask&(1<<i))!=0}).ToArray();until.SelectedDate=rule?.ValidUntil?.ToDateTime(TimeOnly.MinValue);
         windowStart=Ui.Input(item?.Activity.WindowStart?.ToString("HH:mm")??rule?.WindowFrom??"08:00");windowEnd=Ui.Input(item?.Activity.WindowEnd?.ToString("HH:mm")??"22:00");
         var setting=vm.State.Reminders.FirstOrDefault(r=>r.ActivityId==item?.Activity.Id);reminder.IsChecked=setting?.Enabled??false;lead=Ui.Input((setting?.LeadMin??15).ToString());lead.Width=80;
-        var more=new StackPanel();AddPair(more,"所属行程表",table,"重复方式",kind);more.Children.Add(Ui.Row(weekdays));Ui.Field(more,"重复结束日（可留空）",until);if(item?.Activity.Kind=="WEEKLY")Ui.Field(more,"修改影响范围",scope);Ui.Field(more,"排程约束",constraint);AddPair(more,"灵活范围开始",windowStart,"灵活范围结束",windowEnd);more.Children.Add(Ui.Row(reminder,Ui.Text("提前分钟"),lead));
+        var more=new StackPanel();AddPair(more,"所属行程表",table,"重复方式",kind);more.Children.Add(Ui.Row(weekdays));Ui.Field(more,"重复结束日（可留空）",until);if(item?.Activity.Kind=="WEEKLY")Ui.Field(more,"修改影响范围",scope);Ui.Field(more,"排程约束",constraint);AddPair(more,"灵活范围开始",windowStart,"灵活范围结束",windowEnd);var reminderRow=new WrapPanel{Margin=new(0,8,0,8),Tag="ReminderRow"};
+        reminder.VerticalAlignment=VerticalAlignment.Center;reminder.Margin=new(0,0,18,0);reminderRow.Children.Add(reminder);
+        var leadGroup=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};var leadLabel=Ui.Text("提前",12);leadLabel.Margin=new(0,0,8,0);leadLabel.VerticalAlignment=VerticalAlignment.Center;leadGroup.Children.Add(leadLabel);
+        lead.Tag="ReminderLead";lead.Width=80;lead.Margin=new(0);lead.VerticalAlignment=VerticalAlignment.Center;leadGroup.Children.Add(lead);var minutesLabel=Ui.Text("分钟",12);minutesLabel.Margin=new(8,0,0,0);minutesLabel.VerticalAlignment=VerticalAlignment.Center;leadGroup.Children.Add(minutesLabel);reminderRow.Children.Add(leadGroup);more.Children.Add(reminderRow);
         panel.Children.Add(new Expander{Header="更多设置 · 行程表、周期与提醒",Content=more,IsExpanded=item?.Activity.Kind=="WEEKLY",Margin=new(0,14,0,10)});
         if(item?.Activity.Kind=="WEEKLY"){void UpdateScope(){bool enabled=scope.SelectedIndex==1;foreach(var c in new Control[]{table,kind,constraint,note,until,windowStart,windowEnd}.Concat(weekdays))c.IsEnabled=enabled;}scope.SelectionChanged+=(_,_)=>UpdateScope();UpdateScope();}
         UpdateDuration();PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape){Close();e.Handled=true;}};Closed+=(_,_)=>{closing=true;cancel.Cancel();};

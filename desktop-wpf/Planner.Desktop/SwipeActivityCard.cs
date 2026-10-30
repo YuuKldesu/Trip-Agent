@@ -30,7 +30,7 @@ public sealed class SwipeActivityCard:Border
         bool changed=IsCompleted!=completed;IsCompleted=completed;IsImportant=important;Completion.Content=completed?"✓":"○";Completion.ToolTip=completed?"恢复未完成":"标记完成";Completion.Foreground=AppTheme.Brush("Accent");
         Star.Content="★";Star.Foreground=Ui.Brush("#A47820");Star.Visibility=important?Visibility.Visible:Visibility.Collapsed;Star.ToolTip="取消收藏";
         AutomationProperties.SetName(Star,"取消收藏："+Entry.Occurrence.Title);
-        ToolTip=$"{Entry.Occurrence.Title}\n{Entry.Occurrence.Start:yyyy-MM-dd HH:mm} — {Entry.Occurrence.End:MM-dd HH:mm}\n"+(completed?"已完成":"待进行")+" · 左滑完成 · 右滑收藏 · 点击编辑 · 右键更多";
+        ToolTip=new ToolTip{MaxWidth=380,Content=new TextBlock{Text=$"{Entry.Occurrence.Title}\n{Entry.Occurrence.Start:yyyy-MM-dd HH:mm} — {Entry.Occurrence.End:MM-dd HH:mm}\n"+(completed?"已完成":"待进行")+" · 点击编辑，右键更多操作",TextWrapping=TextWrapping.Wrap,MaxWidth=350}};
         if(animate&&changed)AnimateOpacity();else{BeginAnimation(OpacityProperty,null);Opacity=completed? .55:1;}
     }
     public Point GesturePosition(Point local)=>Parent is UIElement parent?TranslatePoint(local,parent):local;

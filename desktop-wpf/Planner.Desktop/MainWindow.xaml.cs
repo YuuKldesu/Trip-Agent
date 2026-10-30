@@ -10,6 +10,7 @@ public partial class MainWindow:Window
     readonly PlannerViewModel vm;readonly StackPanel tables=new();readonly DockPanel details=new();readonly TextBlock status=Ui.Text("",11);readonly ScheduleBoard calendar;
     readonly DockPanel navigation=new();readonly Border left,right;readonly FrameworkElement center,brand;readonly Button compactSettings;bool compact,changingLayout,closing;
     double fullWidth,fullHeight,compactWidth,compactHeight;SettingsPage? settingsPage;readonly Grid workspace=new();readonly Button boardTab=Ui.Button("行程看板",()=>{}),settingsTab=Ui.Button("设置",()=>{});string workspacePage="board";bool settingsTabOpen;EditorWindow? activeEditor;
+    readonly System.Windows.Threading.DispatcherTimer dateTimer=new(){Interval=TimeSpan.FromSeconds(10)};
     public bool IsCompact=>compact;
     public MainWindow(PlannerViewModel model)
     {
@@ -21,9 +22,10 @@ public partial class MainWindow:Window
         calendar=new(vm){Focusable=true};var tabs=Ui.Row(boardTab,settingsTab);tabs.Margin=new(0,0,0,8);DockPanel.SetDock(tabs,Dock.Top);middle.Children.Add(tabs);settingsTab.Visibility=Visibility.Collapsed;var closeSettings=Ui.Button("×",()=>{settingsTabOpen=false;ShowBoard();});closeSettings.ToolTip="关闭设置页（保留未保存输入）";closeSettings.SetBinding(VisibilityProperty,new System.Windows.Data.Binding(nameof(Visibility)){Source=settingsTab});tabs.Children.Add(closeSettings);boardTab.Tag="WorkspaceBoard";settingsTab.Tag="WorkspaceSettings";boardTab.Click+=(_,_)=>ShowBoard();settingsTab.Click+=(_,_)=>ShowWorkspace("settings");middle.Children.Add(workspace);workspace.Children.Add(calendar);calendar.AddRequested+=d=>OpenEditor(null,d);calendar.EditRequested+=o=>OpenEditor(o);calendar.Selected+=ShowDetails;calendar.DeleteRequested+=Delete;
         right=new(){Background=Ui.Brush("#F6F0E7"),BorderBrush=Ui.Brush("#E5DBCF"),BorderThickness=new(1,0,0,0),Padding=new(12),Child=details};Grid.SetColumn(right,3);Root.Children.Add(right);BuildAssistant(details);AddAssistantSplitter();
         Grid.SetRow(status,1);Grid.SetColumn(status,1);Grid.SetColumnSpan(status,3);status.Margin=new(14,5,14,5);Root.Children.Add(status);
+        dateTimer.Tick+=(_,_)=>calendar.CheckDateChange(Clock.Today);Activated+=(_,_)=>calendar.CheckDateChange(Clock.Today);dateTimer.Start();
         vm.Changed+=Refresh;SizeChanged+=(_,_)=>{if(!changingLayout){RememberSize();ApplyLayout();}};Loaded+=(_,_)=>{changingLayout=true;try{var area=SystemParameters.WorkArea;bool small=vm.Appearance.LayoutMode=="COMPACT";Width=Math.Min(small?compactWidth:fullWidth,area.Width);Height=Math.Min(small?compactHeight:fullHeight,area.Height);}finally{changingLayout=false;}ApplyLayout();};
         PreviewKeyDown+=(_,e)=>{if(e.Key==Key.B&&Keyboard.Modifiers==ModifierKeys.Control){ToggleSidebar();e.Handled=true;}};
-        Closing+=(_,_)=>{closing=true;RememberSize();new BoardPreferenceStore(vm.DataDirectory).Update(p=>{p.FullWidth=fullWidth;p.FullHeight=fullHeight;p.CompactWidth=compactWidth;p.CompactHeight=compactHeight;});};Closed+=(_,_)=>{vm.Changed-=Refresh;OnClosedServices();};Refresh();
+        Closing+=(_,_)=>{closing=true;RememberSize();new BoardPreferenceStore(vm.DataDirectory).Update(p=>{p.FullWidth=fullWidth;p.FullHeight=fullHeight;p.CompactWidth=compactWidth;p.CompactHeight=compactHeight;});};Closed+=(_,_)=>{dateTimer.Stop();vm.Changed-=Refresh;OnClosedServices();};Refresh();
     }
     void Refresh(){if(closing)return;AppTheme.Apply(vm.Appearance.Theme,vm.Appearance.AccentColor);Typography.Apply(vm.Appearance.FontSize);BuildNavigation();ApplyLayout();}
     public void ReturnToBoard()=>ShowBoard();
