@@ -71,7 +71,7 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
         var panel=new StackPanel();panel.Children.Add(Ui.Text(who,10));var body=new TextBox{Text=text,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,BorderThickness=new(0),Background=Brushes.Transparent,Padding=new(0),Margin=new(0),IsReadOnlyCaretVisible=false};Typography.Set(body,13);panel.Children.Add(body);
         var actions=new StackPanel{Orientation=Orientation.Horizontal};
         if(id is not null){var edit=Ui.Button("编辑",()=>{SaveDraft();previousDraft=input.Text;editId=id;input.Text=conversation.Active.Messages.Single(m=>m.Id==id).Content;SetBusy();input.Focus();});edit.Tag="EditMessage:"+id;edit.Padding=new(5,2,5,2);actions.Children.Add(edit);panel.Children.Add(actions);}
-        var bubble=new Border{Child=panel,Padding=new(10),CornerRadius=new(12),Margin=new(id is null?0:16,0,0,12),Background=id is null?Brushes.Transparent:Ui.Brush("#EEE7DF")};actions.Opacity=0;bubble.MouseEnter+=(_,_)=>actions.Opacity=1;bubble.MouseLeave+=(_,_)=>{if(!actions.IsKeyboardFocusWithin)actions.Opacity=0;};actions.GotKeyboardFocus+=(_,_)=>actions.Opacity=1;log.Children.Add(bubble);
+        var assistant=who=="助手";var bubble=new Border{Tag=assistant?"AssistantBubble":"UserBubble",Child=panel,Padding=new(12),CornerRadius=new(12),Margin=new(assistant?0:16,0,assistant?16:0,12),Background=AppTheme.Brush(assistant?"Surface":"Selected"),BorderBrush=AppTheme.Brush("Border"),BorderThickness=new(assistant?1:0)};actions.Opacity=0;bubble.MouseEnter+=(_,_)=>actions.Opacity=1;bubble.MouseLeave+=(_,_)=>{if(!actions.IsKeyboardFocusWithin)actions.Opacity=0;};actions.GotKeyboardFocus+=(_,_)=>actions.Opacity=1;log.Children.Add(bubble);
     }
     void RenderReceipts()
     {

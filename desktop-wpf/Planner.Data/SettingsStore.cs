@@ -7,8 +7,6 @@ namespace Planner.Data;
 public sealed class ServiceSettings
 {
     public string AgentProvider {get;set;}="AUTO";
-    public string BailianRegion {get;set;}="北京";
-    public string BailianHost {get;set;}="";
     public string LlmEndpoint {get;set;}="";
     public string Model {get;set;}="";
     public string LlmKeyProtected {get;set;}="";
@@ -20,7 +18,12 @@ public sealed class ServiceSettings
 public sealed class SettingsStore(string directory)
 {
     readonly string path=Path.Combine(directory,"services.json");
-    public ServiceSettings Load()=>File.Exists(path)?JsonSerializer.Deserialize<ServiceSettings>(File.ReadAllText(path),JsonKit.Options)??new():new();
+    public ServiceSettings Load()
+    {
+        var settings=File.Exists(path)?JsonSerializer.Deserialize<ServiceSettings>(File.ReadAllText(path),JsonKit.Options)??new():new();
+        if(settings.AgentProvider is not("AUTO" or "LOCAL" or "CUSTOM" or "DEEPSEEK"))settings.AgentProvider="LOCAL";
+        return settings;
+    }
     public void Save(ServiceSettings settings)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);var tmp=path+".tmp";File.WriteAllText(tmp,JsonSerializer.Serialize(settings,JsonKit.Options));File.Move(tmp,path,true);
