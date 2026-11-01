@@ -49,6 +49,10 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
                     return new(){Message=answer,Missing=["有效的活动信息"],DraftIssue="本轮活动数据不完整或格式不正确，暂不能生成草稿。可以继续说明要调整的内容，我会重新整理。"};
             }
             catch(JsonException){}
+            // A normal conversational answer is useful even when the model omits the draft envelope.
+            // Never interpret plain text as a plan or pass broken JSON/HTML through as an answer.
+            if(value.Length is >0 and <=12000&&!value.StartsWith("{")&&!value.StartsWith("[")&&!value.StartsWith("<")&&!value.StartsWith("```"))
+                return new(){Message=value,Ready=false};
             throw;
         }
     }
@@ -60,9 +64,14 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
         if(provider=="DEEPSEEK"){endpoint="https://api.deepseek.com/v1";model="deepseek-flash";body["thinking"]=new{type="disabled"};}else if(provider!="CUSTOM")throw new ArgumentException("请在设置中选择有效的智能服务。");
         if(string.IsNullOrWhiteSpace(model))throw new ArgumentException("请先在设置中填写模型名称。");var uri=LlmClient.Endpoint(endpoint);var key=SettingsStore.Unprotect(config.LlmKeyProtected);if(string.IsNullOrWhiteSpace(key)&&!uri.IsLoopback)throw new ArgumentException("请先在设置中填写模型密钥。");
         var history=new List<object>{new{role="system",content=SystemPrompt+"\n当前北京时间："+Clock.Now.ToString("yyyy-MM-dd HH:mm")}};history.AddRange(messages.Select(m=>(object)new{role=m.Role,content=m.Content}));body["model"]=model;body["messages"]=history;body["temperature"]=.2;if(config.JsonMode)body["response_format"]=new{type="json_object"};
+        for(int attempt=0;attempt<2;attempt++)
+        {
         using var request=new HttpRequestMessage(HttpMethod.Post,uri);request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);request.Content=new StringContent(JsonSerializer.Serialize(body),Encoding.UTF8,"application/json");using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);if(!response.IsSuccessStatusCode)throw new InvalidOperationException($"对话服务返回HTTP {(int)response.StatusCode}，本轮未写入行程，请检查服务设置后重试。");
         await using var stream=await response.Content.ReadAsStreamAsync(token);using var buffer=new MemoryStream();byte[] bytes=new byte[8192];int n;while((n=await stream.ReadAsync(bytes,token))>0){if(buffer.Length+n>1024*1024)throw new InvalidOperationException("对话响应过长，本轮未写入行程。");buffer.Write(bytes,0,n);}token.ThrowIfCancellationRequested();
-        try{using var doc=JsonDocument.Parse(buffer.ToArray());return ParseTurn(doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()??"");}catch(Exception e)when(e is JsonException or KeyNotFoundException or IndexOutOfRangeException){throw new ArgumentException("对话服务未返回有效回复，本轮未写入行程。",e);}
+        try{using var doc=JsonDocument.Parse(buffer.ToArray());return ParseTurn(doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()??"");}catch(ArgumentException)when(attempt==0){history.Add(new{role="system",content="上一轮响应不能解析。请针对用户最后一条消息继续对话，严格返回JSON对象：message必须为非空中文回答；summary用字符串，missing和events用数组，ready用布尔。用户只是表示不满意时请自然追问，ready=false、events=[]。不要输出Markdown或字段之外的文字。"});body["messages"]=history;}
+        catch(Exception e)when(e is JsonException or KeyNotFoundException or IndexOutOfRangeException){throw new ArgumentException("对话服务未返回有效回复，本轮未写入行程。",e);}
+        }
+        throw new ArgumentException("助手尚未返回可用回复，请重试；原对话已保留。");
     }
     public static GuidedReply LocalReply(IReadOnlyList<ConversationMessage> messages,DateOnly today)
     {

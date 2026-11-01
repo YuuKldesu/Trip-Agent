@@ -20,9 +20,27 @@ static class ConversationRecoveryTests
                 finally{if(Directory.Exists(dir))Directory.Delete(dir,true);}
             }
         });
+        test("plain conversational answer is preserved without enabling a plan",()=>
+        {
+            var reply=GuidedAgentClient.ParseTurn("你想调整时间、地点还是行程节奏？");
+            Check(reply.Message=="你想调整时间、地点还是行程节奏？"&&!reply.Ready&&reply.Events.Count==0&&reply.DraftIssue.Length==0);
+        });
+        test("malformed structured turn is repaired once using the same user history",()=>
+        {
+            int calls=0;using var http=new HttpClient(new Handler(async request=>
+            {
+                calls++;using var doc=JsonDocument.Parse(await request.Content!.ReadAsStringAsync());var messages=doc.RootElement.GetProperty("messages");
+                Check(messages[1].GetProperty("content").GetString()=="不满意");
+                if(calls==2)Check(messages.GetArrayLength()==3&&messages[2].GetProperty("role").GetString()=="system");
+                string content=calls==1?"{broken":"你希望先改哪个部分？";
+                return new(HttpStatusCode.OK){Content=new StringContent(JsonSerializer.Serialize(new{choices=new[]{new{message=new{content}}}}),Encoding.UTF8,"application/json")};
+            }));
+            var reply=new GuidedAgentClient(http).ReplyAsync(new(){AgentProvider="CUSTOM",LlmEndpoint="http://localhost/v1",Model="fixture"},[new(){Content="不满意"}],default).GetAwaiter().GetResult();
+            Check(calls==2&&reply.Message=="你希望先改哪个部分？"&&!reply.Ready);
+        });
         test("invalid responses without usable text remain errors rather than fake replies",()=>
         {
-            foreach(string text in new[]{"not json","{}","{\"message\":null}","{\"message\":\"\"}"})
+            foreach(string text in new[]{"{broken","{}","{\"message\":null}","{\"message\":\"\"}"})
             {bool rejected=false;try{GuidedAgentClient.ParseTurn(text);}catch(ArgumentException){rejected=true;}Check(rejected);}
         });
         test("follow up after ready draft and malformed activity data retains complete history",()=>

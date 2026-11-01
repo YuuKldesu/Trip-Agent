@@ -10,9 +10,9 @@ public sealed class BoardPreferences
     public bool AlwaysOnTop {get;set;}
     public string Nickname {get;set;}="我的空间";
     public string Avatar {get;set;}="我";
-    public bool SidebarExpanded {get;set;}
-    public bool TablesPanelOpen {get;set;}
-    public bool AssistantPanelOpen {get;set;}
+    public bool SidebarExpanded {get;set;}=true;
+    public bool TablesPanelOpen {get;set;}=true;
+    public bool AssistantPanelOpen {get;set;}=true;
     public double AssistantWidth {get;set;}=380;
     public HashSet<string> HiddenTables {get;set;}=[];
     public double FullWidth {get;set;}=1480;

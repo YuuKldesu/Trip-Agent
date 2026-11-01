@@ -14,6 +14,9 @@ static class ConversationRecoveryChecks
 {
     public static async Task Run(MainWindow owner,string directory,Action<bool,string> check)
     {
+        var startupVm=new PlannerViewModel(Path.Combine(directory,"startup-panels"),false);startupVm.UpdateAppearance(p=>{p.SidebarExpanded=false;p.TablesPanelOpen=false;p.AssistantPanelOpen=false;});
+        var startup=new MainWindow(startupVm){Owner=owner};startup.Show();await Task.Delay(60);var grid=(Grid)startup.FindName("Root");
+        check(startupVm.Appearance.SidebarExpanded&&startupVm.Appearance.TablesPanelOpen&&startupVm.Appearance.AssistantPanelOpen&&grid.ColumnDefinitions[0].ActualWidth>200&&grid.ColumnDefinitions[3].ActualWidth>=280,"启动时展开左右侧栏，覆盖上次的关闭状态");startup.ToggleAssistant();check(!startupVm.Appearance.AssistantPanelOpen,"启动默认展开后仍可手动收起助手");startup.Close();
         var vm=new PlannerViewModel(Path.Combine(directory,"chat-recovery"),false);
         new SettingsStore(vm.DataDirectory).Save(new(){AgentProvider="CUSTOM",LlmEndpoint="http://localhost/v1",Model="fixture"});
         int call=0;var day=Clock.Today.AddDays(5);
@@ -23,14 +26,16 @@ static class ConversationRecoveryChecks
             call++;
             if(call==4)throw new HttpRequestException("模拟连接中断");
             if(call==5)throw new TaskCanceledException("模拟请求超时");
-            string json=call==2?"{\"message\":\"你想怎么调整？\",\"ready\":true,\"events\":[]}":ready;
+            string json=call==2?"你想怎么调整？":ready;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(JsonSerializer.Serialize(new{choices=new[]{new{message=new{content=json}}}}),Encoding.UTF8,"application/json")});
         }));
         using var panel=new GuidedAssistantPanel(vm,owner,new GuidedAgentClient(http));
         var window=new Window{Owner=owner,Content=panel,Width=520,Height=800};window.Show();
+        var newChat=Walk(panel).OfType<Button>().Single(b=>Equals(b.Tag,"Assistant:新对话"));newChat.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        var tabs=Walk(panel).OfType<Button>().Where(b=>b.Tag is string id&&id.StartsWith("ConversationTab:")).ToArray();check(tabs.Length==2,"多个会话直接显示在助手顶部选项卡");string newBranch=panel.Conversation.ActiveBranchId;tabs[0].RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));check(panel.Conversation.ActiveBranchId!=newBranch,"点击会话选项卡切换会话");panel.SelectBranch(newBranch);
         await panel.SendAsync("明天参观南京博物院一小时");var review=panel.OpenReview();
         await panel.SendAsync("行程表我不满意");
-        check(panel.Conversation.Active.Messages.Last().Content=="你想怎么调整？"&&panel.Conversation.Active.Reply is {Ready:false}&&Walk(panel).Any(x=>Equals((x as FrameworkElement)?.Tag,"ConversationDraftIssue")),"生成草稿后补充消息仍显示回复，无效活动数据不启用生成");
+        check(panel.Conversation.Active.Messages.Last().Content=="你想怎么调整？"&&panel.Conversation.Active.Reply is {Ready:false},"生成草稿后补充消息仍显示回复，普通文字不启用生成");
         Button(review,"生成行程 →").RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));await Task.Delay(30);
         check(vm.State.Activities.Count==0&&Walk(review).OfType<TextBlock>().Any(t=>t.Text.Contains("分支已变动")),"补充消息使旧草稿失效，防止保存旧需求");review.Close();
         await panel.SendAsync("改成一小时");
