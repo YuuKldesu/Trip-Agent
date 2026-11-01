@@ -16,7 +16,7 @@ static class ConversationRecoveryChecks
     {
         var startupVm=new PlannerViewModel(Path.Combine(directory,"startup-panels"),false);startupVm.UpdateAppearance(p=>{p.SidebarExpanded=false;p.TablesPanelOpen=false;p.AssistantPanelOpen=false;});
         var startup=new MainWindow(startupVm){Owner=owner};startup.Show();await Task.Delay(60);var grid=(Grid)startup.FindName("Root");
-        check(startupVm.Appearance.SidebarExpanded&&startupVm.Appearance.TablesPanelOpen&&startupVm.Appearance.AssistantPanelOpen&&grid.ColumnDefinitions[0].ActualWidth>200&&grid.ColumnDefinitions[3].ActualWidth>=280,"启动时展开左右侧栏，覆盖上次的关闭状态");startup.ToggleAssistant();check(!startupVm.Appearance.AssistantPanelOpen,"启动默认展开后仍可手动收起助手");startup.Close();
+        check(startupVm.Appearance.SidebarExpanded&&startupVm.Appearance.TablesPanelOpen&&startupVm.Appearance.AssistantPanelOpen&&grid.ColumnDefinitions[0].ActualWidth>200&&Math.Abs(grid.ColumnDefinitions[3].ActualWidth-280)<1,"启动时展开左右侧栏，助手默认最小宽度280");startup.ToggleAssistant();check(!startupVm.Appearance.AssistantPanelOpen,"启动默认展开后仍可手动收起助手");startup.Close();
         var vm=new PlannerViewModel(Path.Combine(directory,"chat-recovery"),false);
         new SettingsStore(vm.DataDirectory).Save(new(){AgentProvider="CUSTOM",LlmEndpoint="http://localhost/v1",Model="fixture"});
         int call=0;var day=Clock.Today.AddDays(5);

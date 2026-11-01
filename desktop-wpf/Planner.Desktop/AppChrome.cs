@@ -26,11 +26,9 @@ public static class AppChrome
             int corner=2;try{DwmSetWindowAttribute(handle,33,ref corner,sizeof(int));}catch(DllNotFoundException){}catch(EntryPointNotFoundException){}
             source.AddHook((IntPtr hwnd,int message,IntPtr wParam,IntPtr lParam,ref bool handled)=>
             {
-                if(message==0x14&&wParam!=IntPtr.Zero&&window.Background is SolidColorBrush background&&GetClientRect(hwnd,out var rect))
-                {
-                    var c=background.Color;var brush=CreateSolidBrush((uint)(c.R|(c.G<<8)|(c.B<<16)));
-                    if(brush!=IntPtr.Zero){try{FillRect(wParam,ref rect,brush);}finally{DeleteObject(brush);}handled=true;return new IntPtr(1);}
-                }
+                // WPF/DWM owns the opaque surface. Erasing it with GDI before every frame
+                // briefly replaces the entire UI with a flat color during live resize.
+                if(message==0x14){handled=true;return new IntPtr(1);}
                 return ConstrainMaximize(window,hwnd,message,wParam,lParam,ref handled);
             });
         }
@@ -51,10 +49,6 @@ public static class AppChrome
     [StructLayout(LayoutKind.Sequential)]struct MinMaxInfo{public NativePoint Reserved,MaxSize,MaxPosition,MinTrackSize,MaxTrackSize;}
     [StructLayout(LayoutKind.Sequential)]struct MonitorInfo{public int Size;public NativeRect Monitor,Work;public uint Flags;}
     [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr hwnd,int attribute,ref int value,int size);
-    [DllImport("user32.dll")][return:MarshalAs(UnmanagedType.Bool)]static extern bool GetClientRect(IntPtr hwnd,out NativeRect rect);
-    [DllImport("user32.dll")]static extern int FillRect(IntPtr dc,ref NativeRect rect,IntPtr brush);
-    [DllImport("gdi32.dll")]static extern IntPtr CreateSolidBrush(uint color);
-    [DllImport("gdi32.dll")][return:MarshalAs(UnmanagedType.Bool)]static extern bool DeleteObject(IntPtr value);
     [DllImport("user32.dll")]static extern IntPtr MonitorFromWindow(IntPtr hwnd,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)][return:MarshalAs(UnmanagedType.Bool)]static extern bool GetMonitorInfo(IntPtr monitor,ref MonitorInfo info);
 }

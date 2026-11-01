@@ -14,7 +14,7 @@ public partial class MainWindow:Window
     public bool IsCompact=>compact;
     public MainWindow(PlannerViewModel model)
     {
-        InitializeComponent();vm=model;vm.UpdateAppearance(p=>{p.SidebarExpanded=true;p.TablesPanelOpen=true;p.AssistantPanelOpen=true;});DataContext=vm;Typography.Apply(vm.Appearance.FontSize);Typography.Set(this,13);fullWidth=vm.Appearance.FullWidth;fullHeight=vm.Appearance.FullHeight;compactWidth=vm.Appearance.CompactWidth;compactHeight=vm.Appearance.CompactHeight;
+        InitializeComponent();vm=model;vm.UpdateAppearance(p=>{p.SidebarExpanded=true;p.TablesPanelOpen=true;p.AssistantPanelOpen=true;p.AssistantWidth=280;});DataContext=vm;Typography.Apply(vm.Appearance.FontSize);Typography.Set(this,13);fullWidth=vm.Appearance.FullWidth;fullHeight=vm.Appearance.FullHeight;compactWidth=vm.Appearance.CompactWidth;compactHeight=vm.Appearance.CompactHeight;
         Root.RowDefinitions.Add(new());Root.RowDefinitions.Add(new(){Height=GridLength.Auto});Root.ColumnDefinitions.Add(new(){Width=new(62)});Root.ColumnDefinitions.Add(new(){Width=new(0)});Root.ColumnDefinitions.Add(new());Root.ColumnDefinitions.Add(new(){Width=new(0)});
         navigation.Background=Ui.Brush("#F1EEEA");navigation.Margin=new(0);Grid.SetRowSpan(navigation,2);Root.Children.Add(navigation);
         left=new(){Visibility=Visibility.Collapsed};

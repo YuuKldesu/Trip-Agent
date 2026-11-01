@@ -22,7 +22,7 @@ static class RolloverLayoutChecks
             board.CheckDateChange(previous);board.NavigateTo(previous);long revision=vm.State.Revision;
             board.CheckDateChange(next);await Task.Delay(30);
             check(vm.SelectedDate==next&&board.DisplayMonth==new DateOnly(2026,11,1),"跨午夜和跨月时跟随今天");
-            check(Walk(board).OfType<Button>().Count(b=>Equals(b.Content,"1 · 今天"))==1&&!Walk(board).OfType<Button>().Any(b=>Equals(b.Content,"31 · 今天")),"日期缓存失效且今天标记唯一");
+            check(Walk(board).OfType<Button>().Count(b=>b.Content is TextBlock current&&current.Text=="1 · 今天")==1&&!Walk(board).OfType<Button>().Any(b=>b.Content is TextBlock previous&&previous.Text=="31 · 今天"),"日期缓存失效且今天标记唯一");
             board.NavigateTo(new(2025,4,15));board.CheckDateChange(next.AddDays(1));
             check(board.DisplayMonth==new DateOnly(2025,4,1)&&vm.SelectedDate==new DateOnly(2025,4,15),"午夜刷新保留正在查看的历史月份");
             board.SetView("LIST");board.CheckDateChange(next.AddDays(2));
