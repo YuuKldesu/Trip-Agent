@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -42,12 +42,12 @@ public sealed class RepositoryAgentClient(HttpClient? client=null)
         if(provider=="BAILIAN"){endpoint=BailianEndpoint(config.BailianRegion,config.BailianHost);model="qwen-plus";extra["enable_thinking"]=false;}
         if(provider=="DEEPSEEK"){endpoint="https://api.deepseek.com/v1";model="deepseek-flash";extra["thinking"]=new{type="disabled"};}
         if(string.IsNullOrWhiteSpace(model))throw new ArgumentException("请在服务设置填写模型名称。");
-        var key=SettingsStore.Unprotect(config.LlmKeyProtected);if(string.IsNullOrWhiteSpace(key)&&!LlmClient.Endpoint(endpoint).IsLoopback)throw new ArgumentException("请在服务设置填写模型API密钥。");
+        var key=ModelHttp.NormalizeKey(SettingsStore.Unprotect(config.LlmKeyProtected));if(string.IsNullOrWhiteSpace(key)&&!LlmClient.Endpoint(endpoint).IsLoopback)throw new ArgumentException("请在服务设置填写模型API密钥。");
         string prompt="只返回JSON对象，包含events数组，最多15项，按用户顺序提取；字段day(YYYY-MM-DD)、title(具体活动完整名称)、location、duration(整数分钟)、start(午夜起分钟，未指定null)、end(明确结束时刻否则null)、earliest(最早开始分钟否则null)、latest_end(必须结束或到达最晚分钟否则null)、notes(仅对应活动明确要求的摘要，未提供为空)、mode_in(公交/步行/骑行/驾车之一或null)、is_return(返程true，duration为0)。日期继承用户说明；缺少信息用null，不猜测日期地点时长。不生成坐标或交通数据，不安排时间。今天是"+Clock.Today.ToString("yyyy-MM-dd");
         extra["model"]=model;extra["messages"]=new[]{new{role="system",content=prompt},new{role="user",content=text}};extra["temperature"]=0;
         if(config.JsonMode)extra["response_format"]=new{type="json_object"};
-        using var request=new HttpRequestMessage(HttpMethod.Post,LlmClient.Endpoint(endpoint));request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);request.Content=new StringContent(JsonSerializer.Serialize(extra),Encoding.UTF8,"application/json");
-        using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);if(!response.IsSuccessStatusCode)throw new InvalidOperationException($"需求识别返回HTTP {(int)response.StatusCode}，请检查服务商、地域、密钥和额度。");
+        var uri=LlmClient.Endpoint(endpoint);using var request=ModelHttp.Request(uri,key,JsonSerializer.Serialize(extra));
+        using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);await ModelHttp.EnsureSuccessAsync(response,uri,"需求识别",token,key);
         await using var stream=await response.Content.ReadAsStreamAsync(token);using var buffer=new MemoryStream();var bytes=new byte[8192];int read;while((read=await stream.ReadAsync(bytes,token))>0){if(buffer.Length+read>1024*1024)throw new InvalidOperationException("模型响应过长。");buffer.Write(bytes,0,read);}
         using var doc=JsonDocument.Parse(buffer.ToArray());return ParseEvents(doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()??"");
     }

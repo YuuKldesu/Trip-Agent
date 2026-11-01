@@ -28,11 +28,10 @@ public sealed class LlmClient(HttpClient? client=null)
         """;
         var requestBody=new Dictionary<string,object?>{["model"]=settings.Model,["temperature"]=0.15,["messages"]=new[]{new{role="system",content=prompt},new{role="user",content=JsonSerializer.Serialize(new{china_now=Clock.Now,scope=context,request=text},JsonKit.Options)}}};
         if(settings.JsonMode)requestBody["response_format"]=new{type="json_object"};
-        using var request=new HttpRequestMessage(HttpMethod.Post,Endpoint(settings.LlmEndpoint));
-        var key=SettingsStore.Unprotect(settings.LlmKeyProtected);if(key.Length>0)request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);
-        request.Content=new StringContent(JsonSerializer.Serialize(requestBody),Encoding.UTF8,"application/json");
+        var uri=Endpoint(settings.LlmEndpoint);var key=ModelHttp.NormalizeKey(SettingsStore.Unprotect(settings.LlmKeyProtected));
+        using var request=ModelHttp.Request(uri,key,JsonSerializer.Serialize(requestBody));
         using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,cancel);
-        if(!response.IsSuccessStatusCode)throw new InvalidOperationException($"LLM请求未成功（HTTP {(int)response.StatusCode}）。请检查地址、模型、密钥与额度。");
+        await ModelHttp.EnsureSuccessAsync(response,uri,"LLM服务",cancel,key);
         await using var stream=await response.Content.ReadAsStreamAsync(cancel);using var buffer=new MemoryStream();var bytes=new byte[8192];int read;
         while((read=await stream.ReadAsync(bytes,cancel))>0){if(buffer.Length+read>1024*1024)throw new InvalidOperationException("模型响应过长，请缩小请求。");buffer.Write(bytes,0,read);}
         using var root=JsonDocument.Parse(buffer.ToArray());
