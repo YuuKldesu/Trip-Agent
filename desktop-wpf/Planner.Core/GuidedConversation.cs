@@ -11,6 +11,7 @@ public sealed class GuidedReply
 {
     public string Message {get;set;}="";
     public string Summary {get;set;}="";
+    public string DraftIssue {get;set;}="";
     public List<string> Missing {get;set;}=[];
     public List<TripRequest> Events {get;set;}=[];
     public bool Ready {get;set;}

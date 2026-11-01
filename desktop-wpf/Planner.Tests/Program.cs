@@ -81,7 +81,8 @@ BoardTests.Register(Test);TrafficTests.Register(Test);
 FeatureUiTests.Register(Test);
 SoftUiTests.Register(Test);
 GuidedPlannerTests.Register(Test);
-ConversationTests.Register(Test);TransferTests.Register(Test);
+ConversationTests.Register(Test);
+ConversationRecoveryTests.Register(Test);TransferTests.Register(Test);
 int failed=0;
 foreach(var (name,body) in tests) { try {body();Console.WriteLine("PASS "+name);}catch(Exception ex){failed++;Console.WriteLine("FAIL "+name+": "+ex.Message);} }
 Console.WriteLine($"RESULT {tests.Count-failed}/{tests.Count} passed");

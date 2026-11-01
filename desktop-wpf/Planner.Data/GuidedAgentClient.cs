@@ -20,6 +20,8 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
 6. 只输出一个JSON对象，不能使用Markdown围栏外的说明。结构：message(当前自然语言回答或追问)，summary(全部已确认需求的摘要)，missing(缺失关键项名称数组)，ready(布尔)，events(活动数组)。
 7. events每项字段：day(YYYY-MM-DD或null)、end_day(明确结束日期或null)、title(1—100字完整名称)、location(地点关键词)、duration(整数分钟或null)、start(当天午夜起分钟或null)、end(结束日期当天午夜起分钟或null)、earliest(当天最早分钟或null)、latest_end(相对开始日期午夜的最晚结束分钟或null)、notes(活动限制及提醒偏好)、mode_in(公交/步行/骑行/驾车或null)、is_return(布尔)、reminder_enabled(用户明确要提醒时true)、reminder_lead_min(提前分钟0—10080，默认15)。不提供内部ID或修改操作。
 8. 只有关键项足够且用户已选定建议时ready=true、missing=[]，汇总并说明需核对。否则ready=false并继续问；不能把未完成信息交给用户自己填表作为默认结束。用户要求先看草稿时，明确指出待确认项，ready仍为false。
+9. 用户在汇总或生成草稿后仍可继续修改。若用户说不满意但未说明原因，先询问想改时间、地点、顺序还是节奏，ready=false；不重复宣布完成。
+10. “现在”使用系统给出的北京时间。附近地点由软件后续检索，不能凭空确认具体设施；尚未明确事项耗时时继续询问或提出待确认建议。
 """;
     public static bool IsLocal(ServiceSettings config)=>config.AgentProvider=="LOCAL"||(config.AgentProvider=="AUTO"&&string.IsNullOrWhiteSpace(config.LlmEndpoint));
     public static GuidedReply Parse(string text)
@@ -34,6 +36,22 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
         }
         catch(Exception e)when(e is JsonException or FormatException or InvalidOperationException){throw new ArgumentException("助手返回的对话格式不完整，本轮未生成行程，可重试或补充说明。",e);}
     }
+    public static GuidedReply ParseTurn(string text)
+    {
+        try{var reply=Parse(text);reply.DraftIssue="";return reply;}
+        catch(ArgumentException)
+        {
+            var value=text.Trim();if(value.StartsWith("```")){int start=value.IndexOf('\n'),end=value.LastIndexOf("```",StringComparison.Ordinal);if(start>=0&&end>start)value=value[(start+1)..end];}
+            try
+            {
+                using var doc=JsonDocument.Parse(value);
+                if(doc.RootElement.ValueKind==JsonValueKind.Object&&doc.RootElement.TryGetProperty("message",out var message)&&message.ValueKind==JsonValueKind.String&&message.GetString() is {} answer&&!string.IsNullOrWhiteSpace(answer)&&answer.Length<=12000)
+                    return new(){Message=answer,Missing=["有效的活动信息"],DraftIssue="本轮活动数据不完整或格式不正确，暂不能生成草稿。可以继续说明要调整的内容，我会重新整理。"};
+            }
+            catch(JsonException){}
+            throw;
+        }
+    }
     public async Task<GuidedReply> ReplyAsync(ServiceSettings config,IReadOnlyList<ConversationMessage> messages,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();if(messages.Count==0||messages.Count>100||messages.Any(m=>m.Role is not("user" or "assistant")||string.IsNullOrWhiteSpace(m.Content)||m.Content.Length>20000))throw new ArgumentException("对话内容无效或过长，请新建对话后继续。");
@@ -41,10 +59,10 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
         var provider=config.AgentProvider=="AUTO"?"CUSTOM":config.AgentProvider;string endpoint=config.LlmEndpoint,model=config.Model;var body=new Dictionary<string,object?>();
         if(provider=="DEEPSEEK"){endpoint="https://api.deepseek.com/v1";model="deepseek-flash";body["thinking"]=new{type="disabled"};}else if(provider!="CUSTOM")throw new ArgumentException("请在设置中选择有效的智能服务。");
         if(string.IsNullOrWhiteSpace(model))throw new ArgumentException("请先在设置中填写模型名称。");var uri=LlmClient.Endpoint(endpoint);var key=SettingsStore.Unprotect(config.LlmKeyProtected);if(string.IsNullOrWhiteSpace(key)&&!uri.IsLoopback)throw new ArgumentException("请先在设置中填写模型密钥。");
-        var history=new List<object>{new{role="system",content=SystemPrompt+"\n当前北京时间日期："+Clock.Today.ToString("yyyy-MM-dd")}};history.AddRange(messages.Select(m=>(object)new{role=m.Role,content=m.Content}));body["model"]=model;body["messages"]=history;body["temperature"]=.2;if(config.JsonMode)body["response_format"]=new{type="json_object"};
+        var history=new List<object>{new{role="system",content=SystemPrompt+"\n当前北京时间："+Clock.Now.ToString("yyyy-MM-dd HH:mm")}};history.AddRange(messages.Select(m=>(object)new{role=m.Role,content=m.Content}));body["model"]=model;body["messages"]=history;body["temperature"]=.2;if(config.JsonMode)body["response_format"]=new{type="json_object"};
         using var request=new HttpRequestMessage(HttpMethod.Post,uri);request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",key);request.Content=new StringContent(JsonSerializer.Serialize(body),Encoding.UTF8,"application/json");using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);if(!response.IsSuccessStatusCode)throw new InvalidOperationException($"对话服务返回HTTP {(int)response.StatusCode}，本轮未写入行程，请检查服务设置后重试。");
         await using var stream=await response.Content.ReadAsStreamAsync(token);using var buffer=new MemoryStream();byte[] bytes=new byte[8192];int n;while((n=await stream.ReadAsync(bytes,token))>0){if(buffer.Length+n>1024*1024)throw new InvalidOperationException("对话响应过长，本轮未写入行程。");buffer.Write(bytes,0,n);}token.ThrowIfCancellationRequested();
-        try{using var doc=JsonDocument.Parse(buffer.ToArray());return Parse(doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()??"");}catch(Exception e)when(e is JsonException or KeyNotFoundException or IndexOutOfRangeException){throw new ArgumentException("对话服务未返回有效回复，本轮未写入行程。",e);}
+        try{using var doc=JsonDocument.Parse(buffer.ToArray());return ParseTurn(doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()??"");}catch(Exception e)when(e is JsonException or KeyNotFoundException or IndexOutOfRangeException){throw new ArgumentException("对话服务未返回有效回复，本轮未写入行程。",e);}
     }
     public static GuidedReply LocalReply(IReadOnlyList<ConversationMessage> messages,DateOnly today)
     {
