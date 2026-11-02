@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>NanjingPlanner</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>True</UseWPF>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ApplicationDefinition Remove="Planner.Desktop/App.xaml" />
+    <ApplicationDefinition Include="Planner.Desktop/App.xaml" Generator="MSBuild:Compile" SubType="Designer" LogicalName="app.xaml" />
+    <Page Remove="boardstyles.xaml" />
+    <Page Remove="Planner.Desktop/MainWindow.xaml" />
+    <Page Include="boardstyles.xaml" Generator="MSBuild:Compile" SubType="Designer" LogicalName="boardstyles.xaml" />
+    <Page Include="Planner.Desktop/MainWindow.xaml" Generator="MSBuild:Compile" SubType="Designer" LogicalName="mainwindow.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Planner.Core">
+      <HintPath>recovered/package/NanjingPlanner/Planner.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Collections">
+      <HintPath>recovered/package/NanjingPlanner/System.Collections.dll</HintPath>
+    </Reference>
+    <Reference Include="Planner.Data">
+      <HintPath>recovered/package/NanjingPlanner/Planner.Data.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.InteropServices">
+      <HintPath>recovered/package/NanjingPlanner/System.Runtime.InteropServices.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ObjectModel">
+      <HintPath>recovered/package/NanjingPlanner/System.ObjectModel.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ComponentModel">
+      <HintPath>recovered/package/NanjingPlanner/System.ComponentModel.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf">
+      <HintPath>recovered/package/NanjingPlanner/Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>recovered/package/NanjingPlanner/Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading">
+      <HintPath>recovered/package/NanjingPlanner/System.Threading.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Linq">
+      <HintPath>recovered/package/NanjingPlanner/System.Linq.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http">
+      <HintPath>recovered/package/NanjingPlanner/System.Net.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>recovered/package/NanjingPlanner/System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ComponentModel.TypeConverter">
+      <HintPath>recovered/package/NanjingPlanner/System.ComponentModel.TypeConverter.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json">
+      <HintPath>recovered/package/NanjingPlanner/System.Text.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.RegularExpressions">
+      <HintPath>recovered/package/NanjingPlanner/System.Text.RegularExpressions.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

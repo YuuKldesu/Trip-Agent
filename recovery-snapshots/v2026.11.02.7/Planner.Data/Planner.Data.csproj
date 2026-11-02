@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Planner.Data</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Planner.Data.schema.sql" />
+    <EmbeddedResource Include="Planner.Data.schema.sql" LogicalName="Planner.Data.schema.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Planner.Core">
+      <HintPath>recovered/package/NanjingPlanner/Planner.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Collections">
+      <HintPath>recovered/package/NanjingPlanner/System.Collections.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Json">
+      <HintPath>recovered/package/NanjingPlanner/System.Text.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http">
+      <HintPath>recovered/package/NanjingPlanner/System.Net.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.RegularExpressions">
+      <HintPath>recovered/package/NanjingPlanner/System.Text.RegularExpressions.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Data.Sqlite">
+      <HintPath>recovered/package/NanjingPlanner/Microsoft.Data.Sqlite.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Linq">
+      <HintPath>recovered/package/NanjingPlanner/System.Linq.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.Encodings.Web">
+      <HintPath>recovered/package/NanjingPlanner/System.Text.Encodings.Web.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory">
+      <HintPath>recovered/package/NanjingPlanner/System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.InteropServices">
+      <HintPath>recovered/package/NanjingPlanner/System.Runtime.InteropServices.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.Common">
+      <HintPath>recovered/package/NanjingPlanner/System.Data.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Primitives">
+      <HintPath>recovered/package/NanjingPlanner/System.Net.Primitives.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
