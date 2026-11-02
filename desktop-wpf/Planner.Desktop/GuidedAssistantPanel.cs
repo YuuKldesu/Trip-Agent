@@ -48,26 +48,54 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
     void Persist(Action change){if(readOnly)throw new InvalidOperationException("对话记录暂不可写，原记录已保留。请先恢复对话文件。");var before=JsonKit.Clone(conversation);try{change();store.Save(conversation);}catch{conversation=before;throw;}}
     async Task SendInput(){string text=input.Text;if(string.IsNullOrWhiteSpace(text)||pending is not null||readOnly)return;followLatest=true;if(editId is {} id){CancelRequest();Persist(()=>conversation.ForkAt(id,text));editId=null;input.Text=previousDraft;Render();await RequestAsync();}else{Persist(()=>{conversation.AddUser(text);conversation.Drafts[conversation.ActiveBranchId]="";});input.Text="";Render();await RequestAsync();}}
     public async Task SendAsync(string text){if(pending is not null)throw new InvalidOperationException("正在回答，可取消后继续。");Persist(()=>conversation.AddUser(text));Render();await RequestAsync();}
+    public async Task ConfirmPlaceAsync(string candidateId)
+    {
+        if(pending is not null||disposed||readOnly)return;
+        Persist(()=>conversation.ConfirmPlace(candidateId));Render();await RequestAsync();
+    }
     public async Task EditMessageAsync(string messageId,string replacement){SaveDraft();CancelRequest();Persist(()=>conversation.ForkAt(messageId,replacement));editId=null;Render();await RequestAsync();}
     public void SelectBranch(string id){if(!conversation.Branches.Any(b=>b.Id==id))throw new ArgumentException("对话分支不存在。");SaveDraft();CancelRequest();Persist(()=>conversation.ActiveBranchId=id);editId=null;input.Text=conversation.Drafts.GetValueOrDefault(id,"");followLatest=true;Render();}
     void CancelRequest(){errorBubble.Visibility=Visibility.Collapsed;serial++;pending?.Cancel();pending=null;if(!disposed){status.Text="已取消回答，已发送消息和原有行程均保留。";SetBusy();}}
     async Task RequestAsync()
     {
-        if(disposed||pending is not null||conversation.Active.Messages.LastOrDefault()?.Role!="user")return;var source=new CancellationTokenSource();using var deadline=CancellationTokenSource.CreateLinkedTokenSource(source.Token);deadline.CancelAfter(TimeSpan.FromSeconds(75));pending=source;errorBubble.Visibility=Visibility.Collapsed;long turn=++serial,version=conversation.Active.Version;string branch=conversation.ActiveBranchId;var messages=conversation.Active.Messages.Select(JsonKit.Clone).ToList();status.Text="正在理解并补齐需求，尚未修改行程…";SetBusy();
-        try{var config=new SettingsStore(vm.DataDirectory).Load();hint.Text=GuidedAgentClient.IsLocal(config)?"本地规则引导 · 多项复杂规划可在设置连接模型":"连续对话 · 只发送当前分支的对话内容";var reply=await client.ReplyAsync(config,messages,deadline.Token);deadline.Token.ThrowIfCancellationRequested();if(disposed||turn!=serial||conversation.ActiveBranchId!=branch||conversation.Active.Version!=version)return;Persist(()=>conversation.AddAssistant(reply));status.Text=reply.Ready?"需求已汇总，核对后可生成行程草稿。":"可以继续自由补充，我会记住本分支已说明的信息。";Render();}
+        if(disposed||pending is not null||conversation.Active.Messages.LastOrDefault()?.Role!="user")return;var source=new CancellationTokenSource();using var deadline=CancellationTokenSource.CreateLinkedTokenSource(source.Token);deadline.CancelAfter(TimeSpan.FromSeconds(120));pending=source;errorBubble.Visibility=Visibility.Collapsed;long turn=++serial,version=conversation.Active.Version;string branch=conversation.ActiveBranchId;var messages=conversation.Active.Messages.Select(JsonKit.Clone).ToList();status.Text="正在理解并补齐需求，尚未修改行程…";SetBusy();
+        try{var config=new SettingsStore(vm.DataDirectory).Load();hint.Text=GuidedAgentClient.IsLocal(config)?"本地规则引导 · 多项复杂规划可在设置连接模型":"引导对话 · 使用当前分支记忆、地点与相关日期行程查询结果";var progress=new Progress<string>(text=>{if(!disposed&&turn==serial&&conversation.ActiveBranchId==branch){status.Text=text;working.Text=text;}});var reply=await client.ReplyWithToolsAsync(config,messages,JsonKit.Clone(conversation.Active.Memory),vm.State.Copy(),progress,deadline.Token);deadline.Token.ThrowIfCancellationRequested();if(disposed||turn!=serial||conversation.ActiveBranchId!=branch||conversation.Active.Version!=version)return;Persist(()=>conversation.AddAssistant(reply));status.Text=reply.Ready?"需求已汇总，核对后可生成行程草稿。":"可以继续自由补充，我会记住本分支已说明的信息。";Render();}
         catch(OperationCanceledException){if(!disposed&&turn==serial){if(source.IsCancellationRequested)status.Text="已取消回答，行程未改变。";else ShowFailure("对话请求超时，尚未收到完整回答。本轮未生成或写入行程。");}}
         catch(Exception ex){if(!disposed&&turn==serial)ShowFailure(ex.Message);}
-        finally{if(ReferenceEquals(pending,source))pending=null;source.Dispose();if(!disposed)SetBusy();}
+        finally{if(ReferenceEquals(pending,source))pending=null;source.Dispose();if(!disposed){SetBusy();Render(false);}}
     }
     void SetBusy(){working.Visibility=pending is null?Visibility.Collapsed:Visibility.Visible;send.IsEnabled=!readOnly&&pending is null&&!string.IsNullOrWhiteSpace(input.Text);send.Visibility=pending is null?Visibility.Visible:Visibility.Collapsed;retry.Visibility=pending is null&&conversation.Active.Messages.LastOrDefault()?.Role=="user"?Visibility.Visible:Visibility.Collapsed;retry.IsEnabled=!readOnly;cancel.Visibility=pending is null?Visibility.Collapsed:Visibility.Visible;editCancel.Visibility=editId is null?Visibility.Collapsed:Visibility.Visible;composeLabel.Visibility=editId is null?Visibility.Collapsed:Visibility.Visible;composeLabel.Text="编辑旧消息 · 发送后建立新分支";}
     void Render(bool scroll=true)
     {
         rendering=true;try{branches.Children.Clear();foreach(var b in conversation.Branches){string id=b.Id;var label=Ui.Text(b.Name,12);label.MaxWidth=140;label.TextTrimming=TextTrimming.None;var tab=Ui.Button("",()=>SelectBranch(id));tab.Content=label;tab.Tag="ConversationTab:"+id;tab.ToolTip=b.Name;tab.Padding=new(10,5,10,5);tab.Background=id==conversation.ActiveBranchId?AppTheme.Brush("Selected"):Brushes.Transparent;branches.Children.Add(tab);if(id==conversation.ActiveBranchId)Dispatcher.BeginInvoke(()=>tab.BringIntoView(),DispatcherPriority.Loaded);}}finally{rendering=false;}
-        var config=new SettingsStore(vm.DataDirectory).Load();hint.Text=GuidedAgentClient.IsLocal(config)?"本地规则引导 · 多项复杂规划可在设置连接模型":"连续对话 · 只发送当前分支的对话内容";modelLabel.Text=GuidedAgentClient.IsLocal(config)?"本地规则 · 先核对再保存":(string.IsNullOrWhiteSpace(config.Model)?config.AgentProvider:config.Model)+" · 先核对再保存";modelLabel.ToolTip=hint.Text;log.Children.Clear();if(conversation.Active.Messages.Count==0){Bubble("助手","今天想安排什么？告诉我日期、地点和要做的事，我们一起完善。",null);foreach(var sample in new[]{"明天在南京博物院参观，约2小时","周末想去南京大学，先帮我确认校区"}){string example=sample;var suggestion=Ui.Button(example,()=>{input.Text=example;input.Focus();});suggestion.Content=new TextBlock{Text=example,TextWrapping=TextWrapping.Wrap};suggestion.HorizontalContentAlignment=HorizontalAlignment.Stretch;log.Children.Add(suggestion);}}
+        var config=new SettingsStore(vm.DataDirectory).Load();hint.Text=GuidedAgentClient.IsLocal(config)?"本地规则引导 · 多项复杂规划可在设置连接模型":"引导对话 · 使用当前分支记忆、地点与相关日期行程查询结果";modelLabel.Text=GuidedAgentClient.IsLocal(config)?"本地规则 · 先核对再保存":(string.IsNullOrWhiteSpace(config.Model)?config.AgentProvider:config.Model)+" · 先核对再保存";modelLabel.ToolTip=hint.Text;log.Children.Clear();if(conversation.Active.Messages.Count==0){Bubble("助手","今天想安排什么？告诉我日期、地点和要做的事，我们一起完善。",null);foreach(var sample in new[]{"明天在南京博物院参观，约2小时","周末想去南京大学，先帮我确认校区"}){string example=sample;var suggestion=Ui.Button(example,()=>{input.Text=example;input.Focus();});suggestion.Content=new TextBlock{Text=example,TextWrapping=TextWrapping.Wrap};suggestion.HorizontalContentAlignment=HorizontalAlignment.Stretch;log.Children.Add(suggestion);}}
         foreach(var message in conversation.Active.Messages)Bubble(message.Role=="user"?"你":"助手",message.Content,message.Role=="user"?message.Id:null);
         if(conversation.Active.Reply is {DraftIssue.Length:>0} incomplete){var issue=Ui.Text(incomplete.DraftIssue,12);issue.Tag="ConversationDraftIssue";log.Children.Add(Ui.Card(issue));}
         if(conversation.Active.Reply is {Ready:true} reply){var summary=new StackPanel();summary.Children.Add(Ui.Text("行程需求汇总",15,true));summary.Children.Add(Ui.Text(reply.Summary.Length>0?reply.Summary:string.Join("\n",reply.Events.Select(e=>$"{e.Day:yyyy-MM-dd} · {e.Title} · {e.Location} · {e.Duration}分钟")),12));bool applied=conversation.Batches.Any(r=>r.BranchId==conversation.ActiveBranchId&&r.SourceVersion==conversation.Active.Version&&r.Status is "APPLIED" or "PENDING");var generate=Ui.Button(applied?"此方案已生成":"生成行程草稿",()=>OpenReview(),true);generate.Tag="ConversationGenerate";generate.IsEnabled=!applied&&!readOnly;summary.Children.Add(generate);log.Children.Add(Ui.Card(summary));}
-        RenderReceipts();SetBusy();double offset=transcript.VerticalOffset;if(scroll)Dispatcher.BeginInvoke(()=>{if(followLatest)transcript.ScrollToEnd();else transcript.ScrollToVerticalOffset(offset);},DispatcherPriority.Loaded);
+        RenderAgentContext();RenderReceipts();SetBusy();double offset=transcript.VerticalOffset;if(scroll)Dispatcher.BeginInvoke(()=>{if(followLatest)transcript.ScrollToEnd();else transcript.ScrollToVerticalOffset(offset);},DispatcherPriority.Loaded);
+    }
+    void RenderAgentContext()
+    {
+        string branch=conversation.ActiveBranchId;long version=conversation.Active.Version;var memory=conversation.Active.Memory;
+        foreach(var group in memory.Candidates.Where(c=>c.Places.Count>0))
+        {
+            var choices=new StackPanel();choices.Children.Add(Ui.Text("选择地点 · "+group.Query,13,true));
+            foreach(var place in group.Places)
+            {
+                string id=place.Id;var button=Ui.Button("",()=>{if(conversation.ActiveBranchId==branch&&conversation.Active.Version==version)Run(()=>ConfirmPlaceAsync(id));});
+                button.Tag="AgentPlace:"+id;button.HorizontalContentAlignment=HorizontalAlignment.Stretch;button.IsEnabled=pending is null;button.Content=new TextBlock{Text=place+"\n"+place.Source,TextWrapping=TextWrapping.Wrap};choices.Children.Add(button);
+            }
+            log.Children.Add(Ui.Card(choices));
+        }
+        if(memory.Facts.Count+memory.SelectedPlaces.Count+memory.Routes.Count+memory.Missing.Count>0)
+        {
+            var details=new StackPanel();
+            foreach(var fact in memory.Facts)details.Children.Add(Ui.Text((fact.Value.Confirmed?"已确认 · ":"建议 · ")+fact.Key+"："+fact.Value.Value+"\n依据：“"+fact.Value.Evidence+"”",11));
+            foreach(var place in memory.SelectedPlaces.Values)details.Children.Add(Ui.Text("已选地点 · "+place+"\n"+place.Source,11));
+            foreach(var route in memory.Routes){string from=memory.SelectedPlaces.GetValueOrDefault(route.FromRef)?.Name??"起点",to=memory.SelectedPlaces.GetValueOrDefault(route.ToRef)?.Name??"终点";details.Children.Add(Ui.Text($"{from} → {to} · {route.Mode} · {route.Minutes}分钟\n{route.DepartAt:MM-dd HH:mm}出发 · {route.Source}\n查询于{route.QueryAt:MM-dd HH:mm} · "+(route.KnownCostFen is {} fen?$"已知费用¥{fen/100d:0.##}"+(route.CostComplete?"":"，其余未知"):"费用未知")+" · 拥挤度未知",11));}
+            if(memory.Missing.Count>0)details.Children.Add(Ui.Text("待确认："+string.Join("、",memory.Missing),11));
+            log.Children.Add(new Expander{Header="已记住的行程信息",Tag="AgentMemory",Content=details,Margin=new(0,0,0,10)});
+        }
     }
     void Bubble(string who,string text,string? id)
     {
@@ -85,7 +113,7 @@ public sealed class GuidedAssistantPanel:DockPanel,IDisposable
     public AgentReviewWindow OpenReview()
     {
         if(review is not null){review.Activate();if(reviewBranch!=conversation.ActiveBranchId||reviewVersion!=conversation.Active.Version)throw new InvalidOperationException("另一个分支的草稿仍在打开，请关闭该草稿后再生成当前方案。");return review;}if(conversation.Active.Reply is not{Ready:true} reply)throw new InvalidOperationException("请先通过对话补齐必要信息。");string branch=conversation.ActiveBranchId;long version=conversation.Active.Version;if(conversation.Batches.Any(r=>r.BranchId==branch&&r.SourceVersion==version&&r.Status is "APPLIED" or "PENDING"))throw new InvalidOperationException("此方案已经生成，可先撤回或修改需求后重新推演。");
-        string? receiptId=null;var w=new AgentReviewWindow(vm,reply.Events.Select(JsonKit.Clone).ToList(),true){Owner=owner};review=w;reviewBranch=branch;reviewVersion=version;w.CanApply=()=>!disposed&&conversation.ActiveBranchId==branch&&conversation.Active.Version==version;
+        string? receiptId=null;var w=new AgentReviewWindow(vm,reply.Events.Select(JsonKit.Clone).ToList(),true,confirmedPlaces:conversation.Active.Memory.SelectedPlaces,knownRoutes:conversation.Active.Memory.Routes){Owner=owner};review=w;reviewBranch=branch;reviewVersion=version;w.CanApply=()=>!disposed&&conversation.ActiveBranchId==branch&&conversation.Active.Version==version;
         w.Applying+=(before,after)=>{if(w.CanApply?.Invoke()!=true)throw new InvalidOperationException("对话已变化，请重新生成。");var receipt=GeneratedBatchService.Capture(before,after,branch);receipt.SourceVersion=version;receipt.Status="PENDING";Persist(()=>conversation.Batches.Add(receipt));receiptId=receipt.Id;};
         w.Applied+=()=>{if(receiptId is {} id)Persist(()=>conversation.Batches.Single(r=>r.Id==id).Status="APPLIED");status.Text="已生成并保存行程，可按批次撤回。";Render(false);};
         w.Closed+=(_,_)=>{review=null;if(receiptId is {} id){var r=conversation.Batches.SingleOrDefault(r=>r.Id==id);if(r is not null&&r.Status=="PENDING"){try{Persist(()=>GeneratedBatchService.Reconcile(vm.State,r));}catch(Exception ex){status.Text=ex.Message;}}}if(!disposed)Render(false);};w.Show();return w;

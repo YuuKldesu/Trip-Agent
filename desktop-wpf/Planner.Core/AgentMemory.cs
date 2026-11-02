@@ -47,6 +47,7 @@ public sealed class ScheduleReadItem
 {
  public string Title {get;set;}="";
  public string? Place {get;set;}
+ public string? PlaceRef {get;set;}
  public string? Table {get;set;}
  public DateTime Start {get;set;}=Clock.Now;
  public DateTime End {get;set;}=Clock.Now;
@@ -59,6 +60,7 @@ public sealed class AgentMemory
  public List<AgentRoute> Routes {get;set;}=[];
  public List<ScheduleRead> ScheduleReads {get;set;}=[];
  public List<TripRequest> Draft {get;set;}=[];
+ public string DraftStatus {get;set;}="NONE";
  public List<string> Missing {get;set;}=[];
  public void Apply(IReadOnlyList<MemoryUpdate> updates,IReadOnlyList<ConversationMessage> messages)
  {
@@ -70,6 +72,7 @@ public sealed class AgentMemory
    var source=messages.FirstOrDefault(m=>m.Id==u.SourceMessageId);
    if(source is null||!source.Content.Contains(u.Evidence,StringComparison.Ordinal)||u.Confirmed&&source.Role!="user")throw new ArgumentException("记忆缺少当前分支用户原文依据，请重新确认。");
    // A late model response cannot overwrite a correction with an older message.
+   if(next.TryGetValue(u.Key,out var confirmed)&&confirmed.Confirmed&&!u.Confirmed)throw new ArgumentException("建议不能覆盖已确认需求，请使用独立建议字段。");
    if(next.TryGetValue(u.Key,out var prior)&&messages.ToList().FindIndex(m=>m.Id==prior.SourceMessageId)>messages.ToList().FindIndex(m=>m.Id==u.SourceMessageId))throw new ArgumentException("不能用更早的消息覆盖新的需求。");
    next[u.Key]=new(){Value=u.Value,SourceMessageId=u.SourceMessageId,Evidence=u.Evidence,Confirmed=u.Confirmed};
   }

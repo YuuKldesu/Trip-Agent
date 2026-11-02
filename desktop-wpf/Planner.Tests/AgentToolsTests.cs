@@ -59,5 +59,24 @@ static class AgentToolsTests
    using var http=new HttpClient(new FixtureHandler(_=>Task.FromResult(Response(ready))));var reply=new GuidedAgentClient(http).ReplyWithToolsAsync(Config(),[new(){Content="明天两个地方"}],memory,new(),null,default).GetAwaiter().GetResult();Equal(false,reply.Ready);Equal(true,reply.Missing.Count>0);
   });
 
+  test("read schedule supplies stored occurrence endpoint references without exposing private notes",()=>{
+   var state=new PlannerState();state.Tables.Add(new(){Id="t"});state.Places.Add(new(){Id="stored",Name="既有地点",Lng=118.8,Lat=32.0});state.Activities.Add(new(){TableId="t",Title="跨日固定事项",PlaceId="stored",StartAt=new(2026,11,2,23,0,0),EndAt=new(2026,11,3,1,0,0),Note="secret"});var memory=new AgentMemory();var session=new AgentToolSession(memory,state,new RepositoryMap(new()));var result=Text(Run(session,"read_schedule","{\"from_day\":\"2026-11-03\",\"to_day\":\"2026-11-03\"}"));Equal(true,result.Contains("跨日固定事项"));Equal(false,result.Contains("secret"));Equal(true,memory.SelectedPlaces.ContainsKey("stored"));Equal("stored",memory.ScheduleReads.Single().Events.Single().PlaceRef);
+  });
+  test("unconfirmed suggestion cannot overwrite confirmed requirement",()=>{
+   var m=new AgentMemory();var messages=new[]{new ConversationMessage{Id="u",Content="公交"},new ConversationMessage{Id="a",Role="assistant",Content="建议步行"}};m.Apply([new(){Key="mode",Value="公交",Confirmed=true,SourceMessageId="u",Evidence="公交"}],messages);Reject(()=>m.Apply([new(){Key="mode",Value="步行",Confirmed=false,SourceMessageId="a",Evidence="步行"}],messages));Equal("公交",m.Facts["mode"].Value);
+  });
+
+  test("partial follow up preserves earlier draft as stale memory instead of dropping it",()=>{
+   var c=new GuidedConversation();c.AddUser("明天玄武湖2小时");var m=new AgentMemory{Draft=[new(){Title="玄武湖",Day=new(2026,11,3),Location="玄武湖",Duration=120}]};c.AddAssistant(new(){Message="已记录",Memory=m});c.AddUser("不满意");using var http=new HttpClient(new FixtureHandler(_=>Task.FromResult(Response("{\"message\":\"想改哪部分？\",\"ready\":false,\"missing\":[\"修改方向\"],\"events\":[]}"))));var reply=new GuidedAgentClient(http).ReplyWithToolsAsync(Config(),c.Active.Messages,c.Active.Memory,new(),null,default).GetAwaiter().GetResult();Equal(1,reply.Memory!.Draft.Count);Equal(false,reply.Ready);
+  });
+  test("failed route query returns explicit error and does not fabricate a route",()=>{
+   var m=new AgentMemory();var result=Text(Run(new AgentToolSession(m,new(),new RepositoryMap(new())),"query_route","{\"from_ref\":\"a\",\"to_ref\":\"b\",\"mode\":\"公交\",\"depart_at\":\"bad\"}"));Equal(true,result.Contains("error"));Equal(0,m.Routes.Count);
+  });
+
+  test("agent tool executes actual Amap HTTP parsing and returns measured route snapshot",()=>{
+   int count=0;using var http=new HttpClient(new FixtureHandler(request=>{count++;string path=request.RequestUri!.AbsolutePath;string json=path.Contains("district")?"{\"status\":\"1\",\"districts\":[{\"polyline\":\"118,31;119,31;119,33;118,33;118,31\"}]}":path.Contains("place/text")?"{\"status\":\"1\",\"pois\":[{\"id\":\"fixture-poi\",\"name\":\"南京入口\",\"address\":\"测试地址\",\"location\":\"118.8,32\",\"adcode\":\"320102\"}]}":"{\"status\":\"1\",\"route\":{\"paths\":[{\"distance\":\"1200\",\"cost\":{\"duration\":\"2100\"},\"steps\":[{\"instruction\":\"测试路线\",\"polyline\":\"118.8,32;118.81,32.01\"}]}]}}";return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(json)});}));
+   var memory=new AgentMemory();var map=new RepositoryMap(new(){MapServiceKeyProtected=SettingsStore.Protect("fixture-map-key")},http);var tool=new AgentToolSession(memory,new(),map);string result=Text(Run(tool,"search_places","{\"query\":\"南京入口\"}"));Equal(true,result.Contains("高德"));var place=memory.Candidates.Single().Places.Single();memory.SelectedPlaces[place.Id]=place;memory.SelectedPlaces["b"]=new(){Id="b",Name="终点",Lng=118.81,Lat=32.01};result=Text(Run(tool,"query_route",JsonSerializer.Serialize(new{from_ref=place.Id,to_ref="b",mode="步行",depart_at="2026-11-03T14:00:00+08:00"})));Equal(true,result.Contains("高德查询快照"));Equal(35,memory.Routes.Single().Minutes);Equal(0,memory.Routes.Single().KnownCostFen);Equal(true,count>=4);Equal(false,result.Contains("fixture-map-key"));
+  });
+
  }
 }

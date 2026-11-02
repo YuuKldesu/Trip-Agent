@@ -40,7 +40,7 @@ public sealed class GuidedConversation
     public ConversationMessage AddUser(string text)
     {
         text=text.Trim();if(text.Length is <1 or >8000)throw new ArgumentException("每条消息请填写1—8000字。");if(Active.Messages.Count>=100)throw new ArgumentException("此分支已较长，请新建对话后继续。");
-        Active.Memory.Routes.Clear();var m=new ConversationMessage{Content=text};Active.Messages.Add(m);Active.Reply=null;Active.Version++;return m;
+        Active.Memory.Routes.Clear();if(Active.Memory.Draft.Count>0)Active.Memory.DraftStatus="STALE";var m=new ConversationMessage{Content=text};Active.Messages.Add(m);Active.Reply=null;Active.Version++;return m;
     }
     public void AddAssistant(GuidedReply reply){if(reply.Memory is not null){reply.Memory.Validate();Active.Memory=JsonKit.Clone(reply.Memory);}Active.Messages.Add(new(){Role="assistant",Content=reply.Message,MemorySnapshot=JsonKit.Clone(Active.Memory)});Active.Reply=JsonKit.Clone(reply);Active.Version++;}
     public ConversationMessage ConfirmPlace(string candidateId)

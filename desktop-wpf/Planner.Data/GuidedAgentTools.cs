@@ -57,7 +57,7 @@ public sealed partial class GuidedAgentClient
     if(reply.Missing.Count>0){reply.Ready=false;reply.DraftIssue="地点、已有行程或路程尚未完成核对。";if(round<5){history.Add(new{role="assistant",content=text});history.Add(new{role="system",content="草稿尚未满足软件校验，请使用工具补齐："+string.Join("；",reply.Missing)+"。若需要用户选择请追问并ready=false。"});continue;}}
    }
    // Never accept model-authored memory snapshots, coordinates or query outcomes.
-   memory.Draft=JsonKit.Clone(reply.Events);memory.Missing=[..reply.Missing];reply.Memory=memory;return reply;
+   if(reply.Events.Count>0){memory.Draft=JsonKit.Clone(reply.Events);memory.DraftStatus=reply.Ready?"READY_FOR_REVIEW":"INCOMPLETE";}else if(memory.Draft.Count>0)memory.DraftStatus="STALE";memory.Missing=[..reply.Missing];reply.Memory=memory;return reply;
   }
   return new(){Message="本轮查询已达上限。已保留查到的地点与路线，请选择地点或缩小需求后继续。",Missing=["继续确认需求"],Memory=memory};
  }

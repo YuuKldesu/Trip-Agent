@@ -25,6 +25,12 @@ public sealed class PlaceSearchBox:StackPanel
   Results.SelectionChanged+=(_,_)=>{if(setting)return;if(SelectedPlace is {} p){Feedback.Text="已选择："+p+"\n"+p.Source;Feedback.Foreground=Ui.Brush("#55715F");}Changed?.Invoke();};
   Unloaded+=(_,_)=>{closed=true;serial++;request?.Cancel();};Loaded+=(_,_)=>closed=false;
  }
+ public void SelectConfirmed(Place place)
+ {
+  request?.Cancel();serial++;QueryInput.Text=place.Name;setting=true;
+  Results.ItemsSource=new[]{JsonKit.Clone(place)};Results.SelectedIndex=0;setting=false;Results.Visibility=Visibility.Visible;
+  Feedback.Text="已在对话中确认："+place+"\n"+place.Source;Changed?.Invoke();
+ }
  void SetBusy(bool busy){SearchButton.IsEnabled=!busy;SearchButton.Content=busy?"正在搜索…":"搜索地点";}
  public async Task SearchAsync()
  {

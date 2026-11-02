@@ -38,7 +38,7 @@ public sealed class AgentToolSession(AgentMemory memory,PlannerState state,Repos
      if(!DateTimeOffset.TryParse(Text("depart_at"),CultureInfo.InvariantCulture,DateTimeStyles.None,out var date))throw new ArgumentException("请提供带日期的出发时间。");var depart=date.ToOffset(TimeSpan.FromHours(8)).DateTime;
      progress?.Report("正在计算路线："+from.Name+" → "+to.Name);
      var estimate=await map.TravelAsync(from,to,mode=="打车"?"驾车":mode,depart,token);token.ThrowIfCancellationRequested();
-     var route=new AgentRoute{FromRef=fromRef,ToRef=toRef,Mode=mode,DepartAt=depart,Minutes=estimate.Minutes,Source=estimate.Source,KnownCostFen=estimate.Option?.KnownCostFen,CostComplete=estimate.Option?.CostComplete??false,Option=estimate.Option is null?null:JsonKit.Clone(estimate.Option)};
+     var route=new AgentRoute{FromRef=fromRef,ToRef=toRef,Mode=mode,DepartAt=depart,Minutes=estimate.Minutes,Source=estimate.Source,KnownCostFen=mode=="打车"?null:estimate.Option?.KnownCostFen,CostComplete=mode!="打车"&&(estimate.Option?.CostComplete??false),Option=estimate.Option is null?null:JsonKit.Clone(estimate.Option)};
      memory.Routes.RemoveAll(r=>r.FromRef==fromRef&&r.ToRef==toRef&&r.Mode==mode&&r.DepartAt==depart);if(memory.Routes.Count>=32)memory.Routes.RemoveAt(0);memory.Routes.Add(route);
      result=new{from_ref=fromRef,to_ref=toRef,from=from.Name,to=to.Name,mode,depart_at=depart,arrival_at=depart.AddMinutes(route.Minutes),minutes=route.Minutes,source=route.Source,query_at=route.QueryAt,known_cost_fen=mode=="打车"?null:route.KnownCostFen,cost_complete=mode!="打车"&&route.CostComplete,crowding="未知",note=mode=="打车"?"使用驾车路线，不能将道路费用视为打车报价。":"路线为查询时快照，未知费用不补猜。"};break;
     }
@@ -47,7 +47,12 @@ public sealed class AgentToolSession(AgentMemory memory,PlannerState state,Repos
      if(!DateOnly.TryParseExact(Text("from_day"),"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var first)||!DateOnly.TryParseExact(Text("to_day"),"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out var last)||last<first||last.DayNumber-first.DayNumber>=7||last==DateOnly.MaxValue)throw new ArgumentException("日程读取需提供1—7天的有效日期范围。");
      progress?.Report("正在核对已有行程："+first.ToString("MM-dd")+"—"+last.ToString("MM-dd"));
      var occurrences=CalendarEngine.Expand(state,first.ToDateTime(TimeOnly.MinValue),last.AddDays(1).ToDateTime(TimeOnly.MinValue));
-     var snapshot=new ScheduleRead{FromDay=first,ToDay=last,Revision=state.Revision,Truncated=occurrences.Count>80,Events=occurrences.Take(80).Select(o=>new ScheduleReadItem{Title=o.Title,Start=o.Start,End=o.End,Table=state.Tables.FirstOrDefault(t=>t.Id==o.Activity.TableId)?.Name,Place=state.Places.FirstOrDefault(p=>p.Id==o.PlaceId)?.Name}).ToList()};
+     foreach(var o in occurrences.Take(80))
+     {
+      if(o.PlaceId is {} id&&!memory.SelectedPlaces.ContainsKey(id)&&memory.SelectedPlaces.Count<30&&state.Places.FirstOrDefault(p=>p.Id==id) is {} stored)
+       memory.SelectedPlaces[id]=JsonKit.Clone(stored);
+     }
+     var snapshot=new ScheduleRead{FromDay=first,ToDay=last,Revision=state.Revision,Truncated=occurrences.Count>80,Events=occurrences.Take(80).Select(o=>new ScheduleReadItem{Title=o.Title,Start=o.Start,End=o.End,Table=state.Tables.FirstOrDefault(t=>t.Id==o.Activity.TableId)?.Name,Place=state.Places.FirstOrDefault(p=>p.Id==o.PlaceId)?.Name,PlaceRef=o.PlaceId is {} id&&memory.SelectedPlaces.ContainsKey(id)?id:null}).ToList()};
      memory.ScheduleReads.RemoveAll(r=>r.FromDay==first&&r.ToDay==last);if(memory.ScheduleReads.Count>=8)memory.ScheduleReads.RemoveAt(0);memory.ScheduleReads.Add(snapshot);
      result=new{schedule=snapshot,conflicts=CalendarEngine.Conflicts(occurrences).Take(30).Select(c=>c.Message)};break;
     }
