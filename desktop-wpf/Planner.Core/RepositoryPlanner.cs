@@ -6,6 +6,7 @@ public sealed class TripRequest
     public DateOnly? EndDay {get;set;}
     public string Title {get;set;}="";
     public string Location {get;set;}="";
+    public string? PlaceRef {get;set;}
     public int? Duration {get;set;}
     public int? Start {get;set;}
     public int? End {get;set;}
