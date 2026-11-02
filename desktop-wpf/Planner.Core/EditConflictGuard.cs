@@ -1,27 +1,112 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Planner.Core;
+
 public static class EditConflictGuard
 {
-    // Weekly patterns change only at rule/table boundaries or explicit dated exceptions.
-    // Inspect their neighborhoods, plus all concrete events, without expanding an infinite rule.
-    public static List<Conflict> ForEdit(PlannerState before,PlannerState after,DateOnly from)
-    {
-        var anchors=new HashSet<DateOnly>{from};
-        foreach(var state in new[]{before,after})
-        {
-            foreach(var a in state.Activities){if(a.StartAt is {} s)anchors.Add(DateOnly.FromDateTime(s));if(a.EndAt is {} e)anchors.Add(DateOnly.FromDateTime(e));}
-            foreach(var r in state.Rules){anchors.Add(r.ValidFrom);if(r.ValidUntil is {} end)anchors.Add(end);}
-            foreach(var t in state.Tables){if(t.ValidFrom is {} s)anchors.Add(s);if(t.ValidUntil is {} e)anchors.Add(e);}
-            foreach(var e in state.Exceptions){anchors.Add(e.OriginDate);if(e.StartAt is {} s)anchors.Add(DateOnly.FromDateTime(s));if(e.EndAt is {} end)anchors.Add(DateOnly.FromDateTime(end));}
-        }
-        var result=new Dictionary<string,Conflict>();
-        foreach(var anchor in anchors.Where(d=>d>=from).Order())
-        {
-            var start=anchor.AddDays(-7);if(start<from)start=from;var until=anchor.AddDays(15);
-            var old=CalendarEngine.Expand(before,start.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)).ToDictionary(o=>o.Key);
-            var changed=CalendarEngine.Expand(after,start.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)).Where(o=>!old.TryGetValue(o.Key,out var prior)||prior.Start!=o.Start||prior.End!=o.End||prior.Title!=o.Title||prior.Activity.TableId!=o.Activity.TableId).Select(o=>o.Key).ToHashSet();
-            if(changed.Count==0)continue;
-            foreach(var c in CalendarEngine.AllConflicts(after,start.ToDateTime(TimeOnly.MinValue),until.ToDateTime(TimeOnly.MinValue)).Where(c=>c.Kind=="TIME_OVERLAP"&&(changed.Contains(c.FirstKey)||c.SecondKey is {} other&&changed.Contains(other))))result[c.FirstKey+"/"+c.SecondKey]=c;
-        }
-        return result.Values.ToList();
-    }
+	public static List<Conflict> ForEdit(PlannerState before, PlannerState after, DateOnly from)
+	{
+		HashSet<DateOnly> hashSet = new HashSet<DateOnly> { from };
+		PlannerState[] array = new PlannerState[2] { before, after };
+		foreach (PlannerState plannerState in array)
+		{
+			foreach (Activity activity in plannerState.Activities)
+			{
+				DateTime? startAt = activity.StartAt;
+				if (startAt.HasValue)
+				{
+					DateTime valueOrDefault = startAt.GetValueOrDefault();
+					hashSet.Add(DateOnly.FromDateTime(valueOrDefault));
+				}
+				startAt = activity.EndAt;
+				if (startAt.HasValue)
+				{
+					DateTime valueOrDefault2 = startAt.GetValueOrDefault();
+					hashSet.Add(DateOnly.FromDateTime(valueOrDefault2));
+				}
+			}
+			foreach (RecurrenceRule rule in plannerState.Rules)
+			{
+				hashSet.Add(rule.ValidFrom);
+				DateOnly? validUntil = rule.ValidUntil;
+				if (validUntil.HasValue)
+				{
+					DateOnly valueOrDefault3 = validUntil.GetValueOrDefault();
+					hashSet.Add(valueOrDefault3);
+				}
+			}
+			foreach (ScheduleTable table in plannerState.Tables)
+			{
+				DateOnly? validUntil = table.ValidFrom;
+				if (validUntil.HasValue)
+				{
+					DateOnly valueOrDefault4 = validUntil.GetValueOrDefault();
+					hashSet.Add(valueOrDefault4);
+				}
+				validUntil = table.ValidUntil;
+				if (validUntil.HasValue)
+				{
+					DateOnly valueOrDefault5 = validUntil.GetValueOrDefault();
+					hashSet.Add(valueOrDefault5);
+				}
+			}
+			foreach (ActivityException exception in plannerState.Exceptions)
+			{
+				hashSet.Add(exception.OriginDate);
+				DateTime? startAt = exception.StartAt;
+				if (startAt.HasValue)
+				{
+					DateTime valueOrDefault6 = startAt.GetValueOrDefault();
+					hashSet.Add(DateOnly.FromDateTime(valueOrDefault6));
+				}
+				startAt = exception.EndAt;
+				if (startAt.HasValue)
+				{
+					DateTime valueOrDefault7 = startAt.GetValueOrDefault();
+					hashSet.Add(DateOnly.FromDateTime(valueOrDefault7));
+				}
+			}
+		}
+		Dictionary<string, Conflict> dictionary = new Dictionary<string, Conflict>();
+		foreach (DateOnly item in hashSet.Where((DateOnly d) => d >= from).Order())
+		{
+			DateOnly dateOnly = item.AddDays(-7);
+			if (dateOnly < from)
+			{
+				dateOnly = from;
+			}
+			DateOnly dateOnly2 = item.AddDays(15);
+			Dictionary<string, Occurrence> old = CalendarEngine.Expand(before, dateOnly.ToDateTime(TimeOnly.MinValue), dateOnly2.ToDateTime(TimeOnly.MinValue)).ToDictionary((Occurrence o) => o.Key);
+			HashSet<string> changed = (from o in CalendarEngine.Expand(after, dateOnly.ToDateTime(TimeOnly.MinValue), dateOnly2.ToDateTime(TimeOnly.MinValue))
+				where !old.TryGetValue(o.Key, out var value) || value.Start != o.Start || value.End != o.End || value.Title != o.Title || value.Activity.TableId != o.Activity.TableId
+				select o.Key).ToHashSet();
+			if (changed.Count == 0)
+			{
+				continue;
+			}
+			foreach (Conflict item2 in CalendarEngine.AllConflicts(after, dateOnly.ToDateTime(TimeOnly.MinValue), dateOnly2.ToDateTime(TimeOnly.MinValue)).Where((Conflict c) =>
+			{
+				if (c.Kind == "TIME_OVERLAP")
+				{
+					if (!changed.Contains(c.FirstKey))
+					{
+						string secondKey = c.SecondKey;
+						if (secondKey != null)
+						{
+							return changed.Contains(secondKey);
+						}
+						return false;
+					}
+					return true;
+				}
+				return false;
+			}))
+			{
+				dictionary[item2.FirstKey + "/" + item2.SecondKey] = item2;
+			}
+		}
+		return dictionary.Values.ToList();
+	}
 }

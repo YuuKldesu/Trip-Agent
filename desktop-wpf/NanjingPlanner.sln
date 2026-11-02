@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planner.Tests", "Planner.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planner.BoardChecks", "Planner.BoardChecks\Planner.BoardChecks.csproj", "{6410D280-6646-4353-A724-6EF1CE37D700}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Planner.RecoveryChecks", "Planner.RecoveryChecks\Planner.RecoveryChecks.csproj", "{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{6410D280-6646-4353-A724-6EF1CE37D700}.Release|x64.Build.0 = Release|Any CPU
 		{6410D280-6646-4353-A724-6EF1CE37D700}.Release|x86.ActiveCfg = Release|Any CPU
 		{6410D280-6646-4353-A724-6EF1CE37D700}.Release|x86.Build.0 = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|x64.Build.0 = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Debug|x86.Build.0 = Debug|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|x64.ActiveCfg = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|x64.Build.0 = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|x86.ActiveCfg = Release|Any CPU
+		{BBC06142-A3A3-4FA3-B1EB-1EECB1794E59}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

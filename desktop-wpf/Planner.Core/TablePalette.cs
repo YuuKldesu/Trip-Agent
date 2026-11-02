@@ -1,6 +1,22 @@
+using System.Collections.Generic;
+
 namespace Planner.Core;
-public sealed record TableColor(string Name,string Hex);
+
 public static class TablePalette
 {
-    public static IReadOnlyList<TableColor> Colors {get;}=new TableColor[]{new("陶土红","#B66A58"),new("杏橙","#BF8651"),new("麦芽金","#9C853D"),new("橄榄绿","#7F8C58"),new("鼠尾草","#66856F"),new("松石绿","#4D8C84"),new("湖蓝","#587F9F"),new("雾蓝","#747DA7"),new("淡紫","#8B74A0"),new("玫瑰粉","#AA738B"),new("可可棕","#957765"),new("石灰","#7C817F")};
+	public static IReadOnlyList<TableColor> Colors { get; } = new TableColor[12]
+	{
+		new TableColor("陶土红", "#B66A58"),
+		new TableColor("杏橙", "#BF8651"),
+		new TableColor("麦芽金", "#9C853D"),
+		new TableColor("橄榄绿", "#7F8C58"),
+		new TableColor("鼠尾草", "#66856F"),
+		new TableColor("松石绿", "#4D8C84"),
+		new TableColor("湖蓝", "#587F9F"),
+		new TableColor("雾蓝", "#747DA7"),
+		new TableColor("淡紫", "#8B74A0"),
+		new TableColor("玫瑰粉", "#AA738B"),
+		new TableColor("可可棕", "#957765"),
+		new TableColor("石灰", "#7C817F")
+	};
 }

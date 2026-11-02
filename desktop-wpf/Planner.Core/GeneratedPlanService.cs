@@ -1,42 +1,135 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+
 namespace Planner.Core;
 
-public static class TransferEndpoints
-{
- public static string? PlaceId(PlannerState state,string? activityId,DateOnly? origin)
- {
-  var activity=state.Activities.FirstOrDefault(a=>a.Id==activityId);if(activity is null)return null;
-  var exception=origin is {} date?state.Exceptions.FirstOrDefault(e=>e.ActivityId==activityId&&e.OriginDate==date&&e.Kind=="OVERRIDE"):null;
-  return exception?.PlaceOverride==true?exception.PlaceId:activity.PlaceId;
- }
- public static string? Snapshot(PlannerState state,PlanLeg leg,string field)
- {
-  var json=state.Segments.Where(s=>s.LegId==leg.Id).OrderBy(s=>s.Seq).FirstOrDefault()?.CostDetailJson;if(string.IsNullOrWhiteSpace(json))return null;
-  try{using var doc=JsonDocument.Parse(json);return doc.RootElement.ValueKind==JsonValueKind.Object&&doc.RootElement.TryGetProperty(field,out var value)&&value.ValueKind==JsonValueKind.String?value.GetString():null;}catch(JsonException){return null;}
- }
-}
-
-// Adds actual final neighbouring route snapshots within the activity transaction.
 public static class GeneratedPlanService
 {
- sealed record Edge(string From,DateOnly? FromOrigin,string? FromPlace,string To,DateOnly? ToOrigin,string? ToPlace,DateTime Depart,TravelEstimate Estimate,string? Mode);
- public static PlannerState Apply(PlannerState state,RepositoryPlan plan,string tableId)
- {
-  var next=ChangeService.Apply(state,RepositoryPlanner.Commands(plan,tableId),plan.Revision);var edges=new Dictionary<string,Edge>();
-  void Add(Edge edge){if(edge.Estimate.Minutes<=0)return;string key=$"{edge.From}:{edge.FromOrigin:yyyy-MM-dd}>{edge.To}:{edge.ToOrigin:yyyy-MM-dd}";edges.TryAdd(key,edge);}
-  foreach(var row in plan.Rows)if(row.PreviousActivityId is {} from&&row.TravelDepartAt is {} depart)Add(new(from,row.PreviousOriginDate,row.PreviousPlaceId,row.ActivityId,null,row.Trip.Place.Id,depart,row.Before,row.Trip.Request.ModeIn));
-  foreach(var row in plan.Rows)if(row.NextActivityId is {} to){var depart=row.Trip.Request.Day!.Value.ToDateTime(TimeOnly.MinValue).AddMinutes(row.Start+row.Trip.Request.Duration!.Value);Add(new(row.ActivityId,null,row.Trip.Place.Id,to,row.NextOriginDate,row.NextPlaceId,depart,row.After,null));}
-  foreach(var edge in edges.Values)
-  {
-   var day=DateOnly.FromDateTime(edge.Depart);var daily=next.Plans.FirstOrDefault(p=>p.PlanDate==day);
-   if(daily is null){daily=new(){PlanDate=day,Status="CONFIRMED",EarliestDepart=edge.Depart};next.Plans.Add(daily);}
-   var fromActivity=next.Activities.Single(a=>a.Id==edge.From);var toActivity=next.Activities.Single(a=>a.Id==edge.To);
-   foreach(var id in new[]{tableId,fromActivity.TableId,toActivity.TableId}.Distinct())if(!next.Scopes.Any(s=>s.PlanId==daily.Id&&s.TableId==id))next.Scopes.Add(new(){PlanId=daily.Id,TableId=id,TableVersion=next.Tables.Single(t=>t.Id==id).Version});
-   var option=edge.Estimate.Option;var leg=new PlanLeg{PlanId=daily.Id,Seq=next.Legs.Where(l=>l.PlanId==daily.Id).Select(l=>l.Seq).DefaultIfEmpty(0).Max()+1,FromActivityId=edge.From,FromOriginDate=edge.FromOrigin,ToActivityId=edge.To,ToOriginDate=edge.ToOrigin,DepartAt=edge.Depart,ArriveAt=edge.Depart.AddMinutes(edge.Estimate.Minutes),RequestedDepartAt=edge.Depart,QueryAt=option?.QueryAt??Clock.Now,ValidationStatus=option is null?"UNVERIFIED":"VALID",KnownCostFen=option?.KnownCostFen,CostComplete=option?.CostComplete??false,CostNote=option?.CostNote??"粗估交通，费用未核验"};next.Legs.Add(leg);
-   var segments=option?.Segments.Select(JsonKit.Clone).ToList()??[];
-   if(segments.Count==0){string mode=edge.Mode??edge.Estimate.Source.Split(" · ")[0];segments.Add(new(){Mode=mode switch{"公交"=>"BUS","骑行"=>"BIKE","驾车"=>"CAR",_=>"WALK"},Instruction=edge.Estimate.Source,DurationSec=edge.Estimate.Minutes*60,Provider=edge.Estimate.Source});}
-   int seq=0;foreach(var segment in segments){segment.Id=Guid.NewGuid().ToString("N");segment.LegId=leg.Id;segment.Seq=++seq;if(seq==1)segment.CostDetailJson=JsonSerializer.Serialize(new{provider_cost_detail=segment.CostDetailJson,from_name=next.PlaceName(edge.FromPlace),to_name=next.PlaceName(edge.ToPlace),ownership_table_id=tableId});next.Segments.Add(segment);}
-  }
-  return next;
- }
+	private sealed record Edge(string From, DateOnly? FromOrigin, string? FromPlace, string To, DateOnly? ToOrigin, string? ToPlace, DateTime Depart, TravelEstimate Estimate, string? Mode);
+
+	public static PlannerState Apply(PlannerState state, RepositoryPlan plan, string tableId)
+	{
+		PlannerState plannerState = ChangeService.Apply(state, RepositoryPlanner.Commands(plan, tableId), plan.Revision);
+		Dictionary<string, Edge> edges = new Dictionary<string, Edge>();
+		foreach (PlannedTrip row in plan.Rows)
+		{
+			string previousActivityId = row.PreviousActivityId;
+			if (previousActivityId != null)
+			{
+				DateTime? travelDepartAt = row.TravelDepartAt;
+				if (travelDepartAt.HasValue)
+				{
+					DateTime valueOrDefault = travelDepartAt.GetValueOrDefault();
+					Add(new Edge(previousActivityId, row.PreviousOriginDate, row.PreviousPlaceId, row.ActivityId, null, row.Trip.Place.Id, valueOrDefault, row.Before, row.Trip.Request.ModeIn));
+				}
+			}
+		}
+		foreach (PlannedTrip row2 in plan.Rows)
+		{
+			string nextActivityId = row2.NextActivityId;
+			if (nextActivityId != null)
+			{
+				DateTime depart = row2.Trip.Request.Day.Value.ToDateTime(TimeOnly.MinValue).AddMinutes(row2.Start + row2.Trip.Request.Duration.Value);
+				Add(new Edge(row2.ActivityId, null, row2.Trip.Place.Id, nextActivityId, row2.NextOriginDate, row2.NextPlaceId, depart, row2.After, null));
+			}
+		}
+		foreach (Edge edge in edges.Values)
+		{
+			DateOnly day = DateOnly.FromDateTime(edge.Depart);
+			Plan daily = plannerState.Plans.FirstOrDefault((Plan p) => p.PlanDate == day);
+			if (daily == null)
+			{
+				daily = new Plan
+				{
+					PlanDate = day,
+					Status = "CONFIRMED",
+					EarliestDepart = edge.Depart
+				};
+				plannerState.Plans.Add(daily);
+			}
+			Activity activity = plannerState.Activities.Single((Activity a) => a.Id == edge.From);
+			Activity activity2 = plannerState.Activities.Single((Activity a) => a.Id == edge.To);
+			foreach (string id in new string[3] { tableId, activity.TableId, activity2.TableId }.Distinct())
+			{
+				if (!plannerState.Scopes.Any((PlanScope s) => s.PlanId == daily.Id && s.TableId == id))
+				{
+					plannerState.Scopes.Add(new PlanScope
+					{
+						PlanId = daily.Id,
+						TableId = id,
+						TableVersion = plannerState.Tables.Single((ScheduleTable t) => t.Id == id).Version
+					});
+				}
+			}
+			RouteOption option = edge.Estimate.Option;
+			PlanLeg planLeg = new PlanLeg
+			{
+				PlanId = daily.Id,
+				Seq = (from l in plannerState.Legs
+					where l.PlanId == daily.Id
+					select l.Seq).DefaultIfEmpty(0).Max() + 1,
+				FromActivityId = edge.From,
+				FromOriginDate = edge.FromOrigin,
+				ToActivityId = edge.To,
+				ToOriginDate = edge.ToOrigin,
+				DepartAt = edge.Depart,
+				ArriveAt = edge.Depart.AddMinutes(edge.Estimate.Minutes),
+				RequestedDepartAt = edge.Depart,
+				QueryAt = (option?.QueryAt ?? Clock.Now),
+				ValidationStatus = ((option == null) ? "UNVERIFIED" : "VALID"),
+				KnownCostFen = option?.KnownCostFen,
+				CostComplete = (option?.CostComplete ?? false),
+				CostNote = (option?.CostNote ?? "粗估交通，费用未核验")
+			};
+			plannerState.Legs.Add(planLeg);
+			List<RouteSegment> list = option?.Segments.Select(JsonKit.Clone).ToList() ?? new List<RouteSegment>();
+			if (list.Count == 0)
+			{
+				string text = edge.Mode ?? edge.Estimate.Source.Split(" · ")[0];
+				List<RouteSegment> list2 = list;
+				RouteSegment routeSegment = new RouteSegment();
+				RouteSegment routeSegment2 = routeSegment;
+				routeSegment2.Mode = text switch
+				{
+					"公交" => "BUS",
+					"骑行" => "BIKE",
+					"驾车" => "CAR",
+					_ => "WALK",
+				};
+				routeSegment.Instruction = edge.Estimate.Source;
+				routeSegment.DurationSec = edge.Estimate.Minutes * 60;
+				routeSegment.Provider = edge.Estimate.Source;
+				list2.Add(routeSegment);
+			}
+			int num = 0;
+			foreach (RouteSegment item in list)
+			{
+				item.Id = Guid.NewGuid().ToString("N");
+				item.LegId = planLeg.Id;
+				num = (item.Seq = num + 1);
+				if (num == 1)
+				{
+					item.CostDetailJson = JsonSerializer.Serialize(new
+					{
+						provider_cost_detail = item.CostDetailJson,
+						from_name = plannerState.PlaceName(edge.FromPlace),
+						to_name = plannerState.PlaceName(edge.ToPlace),
+						ownership_table_id = tableId
+					});
+				}
+				plannerState.Segments.Add(item);
+			}
+		}
+		return plannerState;
+		void Add(Edge edge2)
+		{
+			if (edge2.Estimate.Minutes > 0)
+			{
+				string key = $"{edge2.From}:{edge2.FromOrigin:yyyy-MM-dd}>{edge2.To}:{edge2.ToOrigin:yyyy-MM-dd}";
+				edges.TryAdd(key, edge2);
+			}
+		}
+	}
 }

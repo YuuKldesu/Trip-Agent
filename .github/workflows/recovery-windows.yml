@@ -1,0 +1,33 @@
+name: Recovered Windows build
+on:
+  workflow_dispatch:
+  push:
+    branches: ['recovery/**']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.201'
+      - name: Core regression checks on Windows
+        run: dotnet run --project desktop-wpf/Planner.Tests/Planner.Tests.csproj -c Release
+      - name: Compile native UI checks
+        run: dotnet build desktop-wpf/Planner.BoardChecks/Planner.BoardChecks.csproj -c Release
+      - name: Publish recovered application
+        run: dotnet publish desktop-wpf/Planner.Desktop/Planner.Desktop.csproj -c Release -r win-x64 --self-contained true -o release/NanjingPlanner
+      - name: Package without personal data
+        shell: pwsh
+        run: |
+          Get-ChildItem release/NanjingPlanner -Filter *.pdb -Recurse | Remove-Item
+          if (Test-Path release/NanjingPlanner/Data) { throw 'Unexpected personal data directory' }
+          if (Get-ChildItem release/NanjingPlanner -Filter services.json -Recurse) { throw 'Unexpected service credentials' }
+          Copy-Item desktop-wpf/RECOVERY.md release/NanjingPlanner/RECOVERY.md
+          Compress-Archive -Path release/NanjingPlanner -DestinationPath NanjingPlanner_v2026.11.02.7_recovered_win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NanjingPlanner_v2026.11.02.7_recovered_win-x64
+          path: NanjingPlanner_v2026.11.02.7_recovered_win-x64.zip
