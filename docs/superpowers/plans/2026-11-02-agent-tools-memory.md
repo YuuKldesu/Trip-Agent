@@ -28,8 +28,8 @@
 ### Task 2: Read-only tools and model loop
 **Files:** Data/AgentToolSession.cs, Data/GuidedAgentClient.cs, Data/AgentPrompt.cs, Tests/AgentToolsTests.cs.
 **Interfaces:** ReplyWithToolsAsync(config,messages,memory,state,progress,token); tools search_places, query_route, read_schedule; tool result includes source/time.
-- [ ] Add HTTP fixtures proving tool result reinjection, ambiguity/no fabricated coordinates, bounds, cancellation, errors, date privacy and update validation; run RED.
-- [ ] Implement JSON action loop using same API, structured prompt and host validation; run GREEN and commit.
+- [x] Add HTTP fixtures proving tool result reinjection, ambiguity/no fabricated coordinates, bounds, cancellation, errors, date privacy and update validation; run RED.
+- [x] Implement JSON action loop using same API, structured prompt and host validation; run GREEN and commit.
 
 ### Task 3: Desktop integration and runnable delivery
 **Files:** Desktop/GuidedAssistantPanel.cs, Desktop/AgentReviewWindow.cs, Desktop/PlaceSearchBox.cs, BoardChecks/AgentToolChecks.cs, README.md.

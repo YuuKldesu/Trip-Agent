@@ -6,3 +6,6 @@ Pre-flight: Task1 snapshot memory is consumed by Task2 and Task3; use one typed 
 Baseline: d426422 + df5192c custom API; core132/132; native98 checks then known rounded-card assertion failure.
 
 Task 1: complete — provenance/override, prefix restoration, restart/route invalidation tests RED (missing DTOs) → GREEN135/135. DateTime snapshot defaults must be valid China-local timestamps.
+
+Task 2: tool protocol/loop implemented with host-selected place references, schedule reads without notes, exact departure route checks, 6 executions / 6 model calls cap, bounded result and cancellation. Added readiness gate RED to reject unchecked schedule/routes.
+Task 2: complete — core140/140, no real services called. JSON assertions decode Unicode escapes rather than treating encoded Chinese as missing data.

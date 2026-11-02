@@ -30,8 +30,26 @@ public sealed class AgentRoute
  public int Minutes {get;set;}
  public string Source {get;set;}="";
  public DateTime QueryAt {get;set;}=Clock.Now;
+ public RouteOption? Option {get;set;}
  public int? KnownCostFen {get;set;}
  public bool CostComplete {get;set;}
+}
+public sealed class ScheduleRead
+{
+ public DateOnly FromDay {get;set;}
+ public DateOnly ToDay {get;set;}
+ public long Revision {get;set;}
+ public DateTime QueryAt {get;set;}=Clock.Now;
+ public bool Truncated {get;set;}
+ public List<ScheduleReadItem> Events {get;set;}=[];
+}
+public sealed class ScheduleReadItem
+{
+ public string Title {get;set;}="";
+ public string? Place {get;set;}
+ public string? Table {get;set;}
+ public DateTime Start {get;set;}=Clock.Now;
+ public DateTime End {get;set;}=Clock.Now;
 }
 public sealed class AgentMemory
 {
@@ -39,6 +57,7 @@ public sealed class AgentMemory
  public Dictionary<string,Place> SelectedPlaces {get;set;}=[];
  public List<PlaceCandidates> Candidates {get;set;}=[];
  public List<AgentRoute> Routes {get;set;}=[];
+ public List<ScheduleRead> ScheduleReads {get;set;}=[];
  public List<TripRequest> Draft {get;set;}=[];
  public List<string> Missing {get;set;}=[];
  public void Apply(IReadOnlyList<MemoryUpdate> updates,IReadOnlyList<ConversationMessage> messages)
@@ -58,6 +77,6 @@ public sealed class AgentMemory
  }
  public void Validate()
  {
-  if(Facts is null||SelectedPlaces is null||Candidates is null||Routes is null||Draft is null||Missing is null||Facts.Count>80||SelectedPlaces.Count>30||Candidates.Count>16||Routes.Count>32||Draft.Count>15||Facts.Any(x=>x.Value is null||x.Key.Length>100||x.Value.Value is null||x.Value.Value.Length>2000)||SelectedPlaces.Any(x=>x.Value is null)||Candidates.Any(x=>x is null||x.Places is null||x.Places.Count>8||x.Places.Any(p=>p is null)))throw new ArgumentException("行程记忆格式无效。");
+  if(ScheduleReads is null||ScheduleReads.Count>8||ScheduleReads.Any(r=>r is null||r.Events is null||r.Events.Count>80)||Facts is null||SelectedPlaces is null||Candidates is null||Routes is null||Draft is null||Missing is null||Facts.Count>80||SelectedPlaces.Count>30||Candidates.Count>16||Routes.Count>32||Draft.Count>15||Facts.Any(x=>x.Value is null||x.Key.Length>100||x.Value.Value is null||x.Value.Value.Length>2000)||SelectedPlaces.Any(x=>x.Value is null)||Candidates.Any(x=>x is null||x.Places is null||x.Places.Count>8||x.Places.Any(p=>p is null)))throw new ArgumentException("行程记忆格式无效。");
  }
 }

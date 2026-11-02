@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using Planner.Core;
 namespace Planner.Data;
 
-public sealed class GuidedAgentClient(HttpClient? client=null)
+public sealed partial class GuidedAgentClient(HttpClient? client=null)
 {
     readonly HttpClient http=client??new(){Timeout=TimeSpan.FromSeconds(60)};
     public const string SystemPrompt="""
