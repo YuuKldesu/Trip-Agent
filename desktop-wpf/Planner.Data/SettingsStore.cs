@@ -21,7 +21,15 @@ public sealed class SettingsStore(string directory)
     public ServiceSettings Load()
     {
         var settings=File.Exists(path)?JsonSerializer.Deserialize<ServiceSettings>(File.ReadAllText(path),JsonKit.Options)??new():new();
-        if(settings.AgentProvider is not("AUTO" or "LOCAL" or "CUSTOM" or "DEEPSEEK"))settings.AgentProvider="LOCAL";
+        // Preserve the destination actually used by the legacy provider, rather than
+        // forwarding its saved credential to an old, previously ignored custom URL.
+        if(settings.AgentProvider=="DEEPSEEK")
+        {
+            settings.AgentProvider="CUSTOM";
+            settings.LlmEndpoint="https://api.deepseek.com/v1";
+            settings.Model="deepseek-flash";
+        }
+        if(settings.AgentProvider is not("AUTO" or "LOCAL" or "CUSTOM"))settings.AgentProvider="LOCAL";
         return settings;
     }
     public void Save(ServiceSettings settings)

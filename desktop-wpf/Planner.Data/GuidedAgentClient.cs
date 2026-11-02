@@ -61,7 +61,7 @@ public sealed class GuidedAgentClient(HttpClient? client=null)
         token.ThrowIfCancellationRequested();if(messages.Count==0||messages.Count>100||messages.Any(m=>m.Role is not("user" or "assistant")||string.IsNullOrWhiteSpace(m.Content)||m.Content.Length>20000))throw new ArgumentException("对话内容无效或过长，请新建对话后继续。");
         if(IsLocal(config))return LocalReply(messages,Clock.Today);
         var provider=config.AgentProvider=="AUTO"?"CUSTOM":config.AgentProvider;string endpoint=config.LlmEndpoint,model=config.Model;var body=new Dictionary<string,object?>();
-        if(provider=="DEEPSEEK"){endpoint="https://api.deepseek.com/v1";model="deepseek-flash";body["thinking"]=new{type="disabled"};}else if(provider!="CUSTOM")throw new ArgumentException("请在设置中选择有效的智能服务。");
+        if(provider!="CUSTOM")throw new ArgumentException("请在设置中选择自定义 API 或本地规则引导。");
         if(string.IsNullOrWhiteSpace(model))throw new ArgumentException("请先在设置中填写模型名称。");var uri=LlmClient.Endpoint(endpoint);var key=SettingsStore.Unprotect(config.LlmKeyProtected);if(string.IsNullOrWhiteSpace(key)&&!uri.IsLoopback)throw new ArgumentException("请先在设置中填写模型密钥。");
         var history=new List<object>{new{role="system",content=SystemPrompt+"\n当前北京时间："+Clock.Now.ToString("yyyy-MM-dd HH:mm")}};history.AddRange(messages.Select(m=>(object)new{role=m.Role,content=m.Content}));body["model"]=model;body["messages"]=history;body["temperature"]=.2;if(config.JsonMode)body["response_format"]=new{type="json_object"};
         for(int attempt=0;attempt<2;attempt++)
