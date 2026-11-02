@@ -78,5 +78,25 @@ static class AgentToolsTests
    var memory=new AgentMemory();var map=new RepositoryMap(new(){MapServiceKeyProtected=SettingsStore.Protect("fixture-map-key")},http);var tool=new AgentToolSession(memory,new(),map);string result=Text(Run(tool,"search_places","{\"query\":\"南京入口\"}"));Equal(true,result.Contains("高德"));var place=memory.Candidates.Single().Places.Single();memory.SelectedPlaces[place.Id]=place;memory.SelectedPlaces["b"]=new(){Id="b",Name="终点",Lng=118.81,Lat=32.01};result=Text(Run(tool,"query_route",JsonSerializer.Serialize(new{from_ref=place.Id,to_ref="b",mode="步行",depart_at="2026-11-03T14:00:00+08:00"})));Equal(true,result.Contains("高德查询快照"));Equal(35,memory.Routes.Single().Minutes);Equal(0,memory.Routes.Single().KnownCostFen);Equal(true,count>=4);Equal(false,result.Contains("fixture-map-key"));
   });
 
+  test("review confirmed memory cannot change a value while citing genuine user text",()=>{
+   var m=new AgentMemory();var user=new ConversationMessage{Content="明天去玄武湖，停留30分钟",CreatedAt=new(2026,11,2,10,0,0)};
+   Reject(()=>m.Apply([new(){Key="activity.1.duration",Value="120",SourceMessageId=user.Id,Evidence="30分钟",Confirmed=true}],[user]));
+   Reject(()=>m.Apply([new(){Key="trip.date",Value="2030-01-01",SourceMessageId=user.Id,Evidence="明天",Confirmed=true}],[user]));
+   m.Apply([new(){Key="trip.date",Value="2026-11-03",SourceMessageId=user.Id,Evidence="明天",Confirmed=true}],[user]);Equal("2026-11-03",m.Facts["trip.date"].Value);
+  });
+  test("review failed oversized tool result is atomic and cannot mark schedule checked",()=>{
+   var state=new PlannerState();state.Tables.Add(new(){Id="t"});for(int i=0;i<70;i++)state.Activities.Add(new(){TableId="t",Title=new string('长',100),StartAt=new(2026,11,3,10,0,0),EndAt=new(2026,11,3,11,0,0)});var memory=new AgentMemory();var result=Text(Run(new AgentToolSession(memory,state,new RepositoryMap(new())),"read_schedule","{\"from_day\":\"2026-11-03\",\"to_day\":\"2026-11-03\"}"));Equal(true,result.Contains("error"));Equal(0,memory.ScheduleReads.Count);Equal(0,memory.SelectedPlaces.Count);
+  });
+  test("review readiness covers all overnight occupied days",()=>{
+   var memory=new AgentMemory();memory.SelectedPlaces["a"]=new(){Id="a",Name="玄武湖"};memory.SelectedPlaces["b"]=new(){Id="b",Name="夫子庙"};memory.ScheduleReads.Add(new(){FromDay=new(2026,11,3),ToDay=new(2026,11,3)});
+   string overnight="{\"message\":\"完成\",\"summary\":\"跨日\",\"ready\":true,\"missing\":[],\"events\":[{\"day\":\"2026-11-03\",\"end_day\":\"2026-11-04\",\"title\":\"跨日活动\",\"location\":\"玄武湖\",\"duration\":180,\"start\":1380,\"end\":120,\"place_ref\":\"a\"}]}";
+   using var http=new HttpClient(new FixtureHandler(_=>Task.FromResult(Response(overnight))));var reply=new GuidedAgentClient(http).ReplyWithToolsAsync(Config(),[new(){Content="跨日安排"}],memory,new(),null,default).GetAwaiter().GetResult();Equal(false,reply.Ready);
+  });
+  test("review automatic route cannot reuse arbitrary departure on same day",()=>{
+   var memory=new AgentMemory();memory.SelectedPlaces["a"]=new(){Id="a",Name="玄武湖"};memory.SelectedPlaces["b"]=new(){Id="b",Name="夫子庙"};memory.ScheduleReads.Add(new(){FromDay=new(2026,11,3),ToDay=new(2026,11,3)});
+   memory.Routes.Add(new(){FromRef="a",ToRef="b",Mode="公交",DepartAt=new(2026,11,3,8,0,0),Minutes=35});string automatic="{\"message\":\"完成\",\"summary\":\"下午活动\",\"ready\":true,\"missing\":[],\"events\":[{\"day\":\"2026-11-03\",\"title\":\"游玩\",\"location\":\"玄武湖\",\"duration\":120,\"earliest\":840,\"place_ref\":\"a\"},{\"day\":\"2026-11-03\",\"title\":\"游览\",\"location\":\"夫子庙\",\"duration\":30,\"mode_in\":\"公交\",\"place_ref\":\"b\"}]}";
+   using var http2=new HttpClient(new FixtureHandler(_=>Task.FromResult(Response(automatic))));var reply=new GuidedAgentClient(http2).ReplyWithToolsAsync(Config(),[new(){Content="下午2点后安排"}],memory,new(),null,default).GetAwaiter().GetResult();Equal(false,reply.Ready);
+  });
+
  }
 }

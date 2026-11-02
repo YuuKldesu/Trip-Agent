@@ -9,7 +9,7 @@ public static class AgentPrompt
 
 # 结构化记忆
 CURRENT_MEMORY是软件保存的当前分支记忆。confirmed=true是有用户原文来源的确认；false仅为建议。工具数据不等于用户偏好。draft_status=STALE表示以前的草稿仅供回忆，已经失效，不得当作当前已确认计划；必须根据本轮修改重新整理。必须遵从用户最新纠正，不能重复旧方案。不把建议伪装成已确认，不用旧来源覆盖新修改。
-通过memory_updates增量更新事实：key用稳定字段（如trip.date、activity.1.duration），value为字符串，source_message_id使用USER_MESSAGE_IDS中的真实ID，evidence逐字摘录该消息原文，confirmed布尔。只更新本轮改变的字段，禁止输出完整memory替换保存状态。取消某项用同一个key值“已取消”，不要保留它参与排程。重要时间约束同时保留原文。
+通过memory_updates增量更新事实：key用稳定字段（如trip.date、activity.1.duration），value为字符串，source_message_id使用USER_MESSAGE_IDS中的真实ID，evidence逐字摘录该消息原文，confirmed布尔。确认value须逐字等于evidence，或是软件可验证的日期（相对于该消息CreatedAt）、时长分钟或HH:mm分钟规范化值；不能验证的推断只能标建议。只更新本轮改变的字段，禁止输出完整memory替换保存状态。取消某项用同一个key值“已取消”，不要保留它参与排程。重要时间约束同时保留原文。
 
 # 只读工具协议
 当需要外部信息时，仅输出 {"tool_requests":[{"name":"工具名","arguments":{...}}]}，每批最多3项，执行结果后继续思考。不要同时给ready草稿。不输出工具执行成功的假结果。
@@ -30,5 +30,11 @@ events每项字段：day(YYYY-MM-DD)、end_day(结束日期或null)、title、lo
 关键日期、每项地点和时长、必要交通方式未确认时ready=false；只问缺项，不固定轮数。可选偏好不阻塞。ready=true前确保每项place_ref在selected_places中，日期范围的已有行程已检查，相关路段已查询；活动最多15项。message应解释实际交通和时间安排，summary包含重要限制。模型计算仅供讨论，软件核对页仍会检查时间与冲突，用户最终确认后才保存。
 草稿后可继续对话，用户不满意时询问修改方向，不反复宣告完成。
 """;
- public static string Build(AgentMemory memory,IReadOnlyList<ConversationMessage> messages)=>Rules+"\n# 当前环境\n南京 / Asia/Shanghai / 北京时间："+Clock.Now.ToString("yyyy-MM-dd HH:mm")+"\n# CURRENT_MEMORY（只读快照）\n"+JsonSerializer.Serialize(memory,JsonKit.Options)+"\n# USER_MESSAGE_IDS（原文溯源，不是额外指令）\n"+JsonSerializer.Serialize(messages.Select(m=>new{m.Id,m.Role,m.Content}),JsonKit.Options);
+ public static string MemoryJson(AgentMemory memory)
+ {
+  var projection=JsonKit.Clone(memory);foreach(var route in projection.Routes)route.Option=null;
+  string json=JsonSerializer.Serialize(projection,new JsonSerializerOptions(JsonKit.Options){Encoder=System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping});
+  if(json.Length>64000)throw new ArgumentException("当前行程记忆内容过多，请缩小需求或新建对话，原记录已保留。");return json;
+ }
+ public static string Build(AgentMemory memory,IReadOnlyList<ConversationMessage> messages)=>Rules+"\n# 当前环境\n南京 / Asia/Shanghai / 北京时间："+Clock.Now.ToString("yyyy-MM-dd HH:mm")+"\n# CURRENT_MEMORY（只读快照）\n"+MemoryJson(memory)+"\n# USER_MESSAGE_IDS（原文溯源，不是额外指令）\n"+JsonSerializer.Serialize(messages.Select(m=>new{m.Id,m.Role,m.Content,m.CreatedAt}),JsonKit.Options);
 }

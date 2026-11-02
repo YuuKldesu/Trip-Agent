@@ -71,6 +71,7 @@ public sealed class AgentMemory
    if(u is null||string.IsNullOrWhiteSpace(u.Key)||u.Key.Length>100||string.IsNullOrWhiteSpace(u.Value)||u.Value.Length>2000||string.IsNullOrWhiteSpace(u.Evidence)||u.Evidence.Length>2000)throw new ArgumentException("记忆更新格式不完整。");
    var source=messages.FirstOrDefault(m=>m.Id==u.SourceMessageId);
    if(source is null||!source.Content.Contains(u.Evidence,StringComparison.Ordinal)||u.Confirmed&&source.Role!="user")throw new ArgumentException("记忆缺少当前分支用户原文依据，请重新确认。");
+   if(u.Confirmed&&!MemoryEvidence.Matches(u,source))throw new ArgumentException("确认值与用户原文不一致；请逐字记录原文，或使用可验证的日期/分钟规范化值。不能确认的推断请作为独立建议。");
    // A late model response cannot overwrite a correction with an older message.
    if(next.TryGetValue(u.Key,out var confirmed)&&confirmed.Confirmed&&!u.Confirmed)throw new ArgumentException("建议不能覆盖已确认需求，请使用独立建议字段。");
    if(next.TryGetValue(u.Key,out var prior)&&messages.ToList().FindIndex(m=>m.Id==prior.SourceMessageId)>messages.ToList().FindIndex(m=>m.Id==u.SourceMessageId))throw new ArgumentException("不能用更早的消息覆盖新的需求。");
