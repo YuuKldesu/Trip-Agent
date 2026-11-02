@@ -30,3 +30,12 @@
 ## 最终运行包检查
 
 最终ca6d962代码自包含发布完成，日志tmp/route-reviewed-publish.log。压缩包解压到全新目录，独立启动主窗、编辑器、路线窗，退出0；17条隔离样例，1480×920。tmp/route-reviewed-package-smoke/smoke-result.txt记录结果。422个文件与发布目录逐一SHA256一致；包内无个人Data。最终源码归档、分支提交与校验清单见工作区output交付说明。
+
+
+## 2026-11-02 Agent tools and structured memory / v2026.11.02.2
+
+- Program code1fbb2ac, unchanged source after review fixes; local feature branch only.
+- Full Release build0 warnings/errors; core149/149; focused actual WPF assistant flow15/15; existing route HTTP6/6, constraints5/5. See agent-tools-progress.md and AGENT_TOOLS_REVIEW.md for evidence and independent-review findings.
+- Fresh runtime ZIP extraction419 file hashes match; extracted exe smoke exit0, main/editor/routes rendered with17 isolated examples. No private Data or keys packaged.
+- Runtime ZIP SHA256:05C04D919E5A89E856EA29A951424641B6ED3494AE2BE22072EFB0E74A48DCDD.
+- Not a full native-suite pass: prior calendar card-radius assertion still fails after98 checks. New tool/confirmation protocol also requires protocol-aware older guided fixture updates before full guided suite reuse. No real paid model/map, physical-touch or comprehensive DPI/multi-monitor testing claimed.

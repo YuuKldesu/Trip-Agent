@@ -36,5 +36,5 @@
 **Interfaces:** candidate buttons call ConfirmPlaceAsync; review receives host-selected places via optional dictionary; requests with PlaceRef validated against selected place.
 - [x] Add native flow test for search→user select→route→ready→review preserving coordinates and stale branch isolation; run RED.
 - [x] Wire context, query progress and memory persistence, 120s deadline, candidate UI, bounded memory inspector and draft place reuse; run GREEN.
-- [ ] Full build/core tests, focused native tests, package/start check; record known baseline native failure separately.
+- [x] Full build/core tests, focused native tests, package/start check; record known baseline native failure separately.
 - [x] Fresh readonly final review, address important findings with RED/GREEN, record verification and commit. No automatic push.
