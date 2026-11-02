@@ -8,12 +8,14 @@
 
 如果只点击仓库右上角 Code → Download ZIP，得到的是源码，不含编译后的 exe。
 
-## 当前版本
+## 当前版本 · v2026.11.02.2
 
 - 暖色圆角看板、可展开侧边栏、独立设置与本地个人资料。
 - 月历、纵向列表和简洁模式；多份行程表、12种归属颜色、字号调整。
 - 左滑完成、右滑收藏；手动编辑、日期弹层和可跨日循环的时间选择。
-- 多轮智能引导、编辑旧消息创建分支、核对后生成与按批次撤回。
+- 多轮智能引导与可追溯的结构化行程记忆；编辑旧消息创建分支、核对后生成与按批次撤回。
+- 对话内高德地点搜索、路线查询和相关日期日程读取；地点候选由用户确认，实际结果回传模型。
+- 自定义 OpenAI 兼容 API，可配置接口地址、模型与密钥。
 - 地点搜索显示地址候选；交通参与排程，自动回填时间并单独显示交通卡片。
 
 实际地图与模型服务需在设置中配置；无地图配置时的本地估算会明确标注。提醒在程序运行时有效。
@@ -26,6 +28,6 @@
 
 当前正式程序的源码位于 [desktop-wpf](desktop-wpf/)。开发构建需要 .NET 10 SDK，使用 [构建脚本](desktop-wpf/build.ps1) 生成自包含 Windows x64 运行包。
 
-[完整使用说明](desktop-wpf/README.md) · [验证记录](desktop-wpf/VERIFICATION.md) · [独立审阅](desktop-wpf/ROUTE_FIX_REVIEW.md)
+[完整使用说明](desktop-wpf/README.md) · [验证记录](desktop-wpf/VERIFICATION.md) · [本轮独立审阅](desktop-wpf/AGENT_TOOLS_REVIEW.md)
 
 主分支只保留当前 Windows 版本。旧 Python 版本在备份分支 backup/pre-release-cleanup-20261029 中保留，不再作为主分支启动入口。
